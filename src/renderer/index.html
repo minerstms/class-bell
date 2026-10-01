@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:;">
+  <title>ClassBell</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main>
+    <header class="masthead">
+      <p class="brand">
+        <svg viewBox="0 0 64 64" aria-hidden="true">
+          <circle cx="32" cy="32" r="30"></circle>
+          <path d="M32 10c2 0 4 2 4 4v3c8 2 14 9 14 18v8l4 6H10l4-6v-8c0-9 6-16 14-18v-3c0-2 2-4 4-4z"></path>
+          <circle cx="32" cy="52" r="5"></circle>
+        </svg>
+        ClassBell
+      </p>
+    </header>
+
+    <p id="banner" class="banner" hidden>
+      <span id="banner-text"></span>
+      <button id="banner-dismiss" type="button">Dismiss</button>
+    </p>
+
+    <section id="view-welcome">
+      <h1>ClassBell</h1>
+      <p id="welcome-line">Welcome. Your ClassBell is ready.</p>
+      <p>This works offline. No account and no internet are required.</p>
+      <div class="stack">
+        <button id="welcome-test" class="primary xl" type="button">Test Sound</button>
+        <button id="welcome-continue" type="button">Continue</button>
+      </div>
+    </section>
+
+    <section id="view-list" hidden>
+      <h1>ClassBell</h1>
+      <p id="today" class="date-line"></p>
+      <p id="clock" class="clock">--:--:--</p>
+      <p class="status-line">
+        <span id="scheduler-dot" data-state="running"></span>
+        <span id="scheduler-label">Scheduler running</span>
+      </p>
+      <p id="live-status" aria-live="polite">Scheduler running.</p>
+      <p class="grace-note">ClassBell checks the Windows clock. An announcement speaks once, and only if it is no more than 30 seconds late. After sleep or a clock change, older missed announcements stay quiet.</p>
+      <p id="list-count"></p>
+      <div class="stack">
+        <button id="pause-button" type="button">Pause announcements</button>
+        <button id="add-button" class="primary" type="button">Add Announcement</button>
+        <button id="import-button" type="button">Import Schedule</button>
+        <button id="export-button" type="button">Export Schedule</button>
+        <button id="settings-button" type="button">Settings</button>
+      </div>
+      <div id="list"></div>
+    </section>
+
+    <section id="view-editor" hidden>
+      <h1 id="editor-heading">Edit announcement</h1>
+      <p id="editor-placeholder-note" class="warning" hidden>This is an incomplete placeholder. It cannot speak until you write a message and mark it ready.</p>
+      <form id="editor-form">
+        <label for="editor-title">Title</label>
+        <input id="editor-title" type="text" maxlength="140" required>
+
+        <label for="editor-message">Message</label>
+        <textarea id="editor-message" maxlength="8000"></textarea>
+
+        <h2>Times</h2>
+        <p>Times are stored as 24-hour HH:MM and shown in 12-hour time.</p>
+        <div id="editor-times"></div>
+        <p id="editor-warning" class="warning" hidden></p>
+        <div class="stack">
+          <button id="editor-add-time" type="button">Add Time</button>
+        </div>
+
+        <label for="editor-voice">Voice</label>
+        <select id="editor-voice"></select>
+        <p id="editor-voice-help"></p>
+
+        <label for="editor-rate">Rate <span id="editor-rate-label">1.00×</span></label>
+        <input id="editor-rate" type="range" min="0.75" max="1.35" step="0.05" value="1">
+
+        <label for="editor-volume">Volume <span id="editor-volume-label">100%</span></label>
+        <input id="editor-volume" type="range" min="0" max="100" step="5" value="100">
+
+        <label class="check" for="editor-enabled">
+          <input id="editor-enabled" type="checkbox">
+          Enabled
+        </label>
+        <label class="check" id="editor-ready-wrap" for="editor-ready" hidden>
+          <input id="editor-ready" type="checkbox">
+          Mark ready to speak
+        </label>
+
+        <label for="editor-notes">Notes</label>
+        <textarea id="editor-notes" maxlength="2000"></textarea>
+
+        <div class="stack">
+          <button id="editor-test" type="button">Test Voice</button>
+          <button id="editor-save" class="primary" type="submit">Save</button>
+          <button id="editor-cancel" type="button">Cancel</button>
+        </div>
+      </form>
+    </section>
+
+    <section id="view-settings" hidden>
+      <h1>Settings</h1>
+      <form id="settings-form">
+        <label for="settings-voice">Default voice</label>
+        <select id="settings-voice"></select>
+        <p id="settings-voice-help"></p>
+
+        <label for="settings-rate">Default rate <span id="settings-rate-label">1.00×</span></label>
+        <input id="settings-rate" type="range" min="0.75" max="1.35" step="0.05" value="1">
+
+        <label for="settings-volume">Default volume <span id="settings-volume-label">100%</span></label>
+        <input id="settings-volume" type="range" min="0" max="100" step="5" value="100">
+
+        <label class="check" for="settings-startup">
+          <input id="settings-startup" type="checkbox">
+          Launch at Windows startup
+        </label>
+        <p>This is saved for your Windows user only and does not need administrator rights. The installed app starts in the tray.</p>
+
+        <label class="check" for="settings-tray">
+          <input id="settings-tray" type="checkbox">
+          Minimize to tray when the window closes
+        </label>
+        <p>The schedule keeps running in the tray. Turn this off if closing the window should quit ClassBell.</p>
+
+        <label class="check" for="settings-startup-sound">
+          <input id="settings-startup-sound" type="checkbox">
+          Play a short sound when ClassBell opens
+        </label>
+
+        <div class="stack">
+          <button id="settings-test" type="button">Test Voice</button>
+          <button id="settings-import" type="button">Import Schedule</button>
+          <button id="settings-export" type="button">Export Schedule</button>
+          <button id="settings-data" type="button">Open data folder</button>
+          <button id="settings-logs" type="button">Open logs folder</button>
+          <button id="settings-done" class="primary" type="button">Done</button>
+        </div>
+        <p id="settings-paths"></p>
+        <p id="settings-version"></p>
+      </form>
+    </section>
+  </main>
+
+  <div id="modal" class="modal" hidden>
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+      <h2 id="modal-title"></h2>
+      <p id="modal-body"></p>
+      <div id="modal-actions" class="stack"></div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

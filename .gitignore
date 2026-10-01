@@ -1,0 +1,17 @@
+node_modules/
+dist/
+tmp/
+*.log
+*.wav
+*.partial
+*.tmp
+.DS_Store
+Thumbs.db
+
+# Piper runtime and voice models are downloaded by npm run vendor.
+# en_US-ljspeech-high.onnx is larger than GitHub's 100 MB file limit.
+vendor/piper/*.exe
+vendor/piper/*.dll
+vendor/piper/*.ort
+vendor/piper/espeak-ng-data/
+voices/*.onnx

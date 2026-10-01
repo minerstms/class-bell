@@ -1,0 +1,8 @@
+Piper 2023.11.14-2 windows amd64
+https://github.com/rhasspy/piper/releases/tag/2023.11.14-2
+Unmodified official binary.
+Piper application code: MIT License (Michael Hansen)
+piper-phonemize: MIT License (Michael Hansen)
+ONNX Runtime: MIT License (Microsoft)
+espeak-ng library and data: GPL-3.0
+See the licenses folder and THIRD_PARTY_NOTICES.md.
