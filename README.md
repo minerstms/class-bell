@@ -16,21 +16,23 @@ A new installation starts with six sample announcements: Welcome to Class, Atten
 
 ## Adding and editing announcements
 
-Choose **Add Announcement** or **Edit** on a card. Set the title and the message, then **Save**. Changes are written immediately to this computer.
+After the welcome screen, ClassBell opens on **Announcements**. **Announcements** and **Settings** are the two tabs at the top. The first launch still shows the welcome screen until you choose **Continue**.
 
-**On** and **Off** on each card enable or disable that announcement. **Test / Play** speaks it now. **Duplicate** adds a copy at the bottom. **Move up** and **Move down** change the order. When two announcements are due at the same minute, they speak in list order, one after another, and they do not talk over each other.
+Choose **Add Announcement** or **Edit** on a card. Set the title and the message, then **Save**. Changes are written immediately to this computer. The announcement list shows the next upcoming announcement, and whether the schedule is running or paused.
+
+**Enabled** and **Disabled** on each card turn that announcement on or off. **Test / Play** speaks it now. **Duplicate** adds a copy at the bottom. **Move up** and **Move down** change the order. When two announcements are due at the same minute, they speak in list order, one after another, and they do not talk over each other.
 
 **Delete** asks before it removes an announcement.
 
 ## Adding times
 
-In the editor, choose **Add Time** and set the clock time. The editor shows both 12-hour time and the stored 24-hour `HH:MM` value. **Remove Time** deletes one time.
+In the editor, choose **Add Time** and set the hour, minute, and AM or PM. ClassBell stores that choice as 24-hour `HH:MM`. **Remove Time** deletes one time.
 
 Times before 7:00 AM are highlighted on the card, with both the 12-hour label and the stored `HH:MM` value, so an early time is easy to correct.
 
 ## Selecting voices
 
-Each announcement has its own voice, rate, and volume. Rate is passed to Piper as a speaking-length adjustment. Volume is applied to the audio before it plays. The settings screen sets the defaults used for new announcements and for **Test Voice**.
+Each announcement has its own voice, rate, and volume. Rate is passed to Piper as a speaking-length adjustment. Volume is applied to the audio before it plays. The settings screen sets the defaults used for new announcements and for **Test Voice**. The voice list is grouped by region. Every voice in that list is installed and works offline.
 
 Bundled voices:
 
@@ -40,7 +42,12 @@ Bundled voices:
 - John (US male)
 - Cori (UK female)
 
-There is no UK male or Australian voice in this build. See `THIRD_PARTY_NOTICES.md` for why, and for how to add another Piper model later.
+The installer also includes these voices. They work offline, and teachers do not install Python:
+
+- Bindi, Marlo, and Kirra (Australian female, Piper 1.8)
+- Alice and Emma (British female, Kokoro)
+
+Those packs are self-contained. Teachers do not install Python. See `THIRD_PARTY_NOTICES.md`.
 
 ## Import and export
 

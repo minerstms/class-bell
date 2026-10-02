@@ -1,6 +1,7 @@
 'use strict';
 
 const { contextBridge, ipcRenderer } = require('electron');
+const { SAMPLE_ANNOUNCEMENT } = require('../shared/defaults');
 const time = require('../shared/time');
 
 contextBridge.exposeInMainWorld('classbell', {
@@ -21,9 +22,13 @@ contextBridge.exposeInMainWorld('classbell', {
   exportScheduleData: () => ipcRenderer.invoke('export-schedule-data'),
   openDataFolder: () => ipcRenderer.invoke('open-data-folder'),
   openLogFolder: () => ipcRenderer.invoke('open-log-folder'),
+  sampleAnnouncement: () => SAMPLE_ANNOUNCEMENT,
   format12: (hhmm) => time.format12(hhmm),
+  to12Parts: (hhmm) => time.to12Parts(hhmm),
+  from12Parts: (hour, minute, suffix) => time.from12Parts(hour, minute, suffix),
   isEarlyHour: (hhmm) => time.isEarlyHour(hhmm),
   nextLabel: (announcement) => time.nextLabel(announcement, new Date()),
+  upcomingLabel: (announcements) => time.upcomingLabel(announcements, new Date()),
   earlyTimesMessage: (times) => time.earlyTimesMessage(times),
   onStatus: (callback) => {
     const listener = (_event, status) => callback(status);

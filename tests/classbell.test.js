@@ -9,11 +9,12 @@ const test = require('node:test');
 const { createDefaultAnnouncements, createDefaultSettings } = require('../src/shared/defaults');
 const { createQueue } = require('../src/shared/queue');
 const { GRACE_MS, collectDue, occurrenceKey } = require('../src/shared/scheduler');
-const { earlyTimesMessage, format12, nextLabel } = require('../src/shared/time');
+const { earlyTimesMessage, format12, from12Parts, nextLabel, to12Parts, upcomingLabel } = require('../src/shared/time');
 const { exportScheduleJson, parseScheduleImport } = require('../src/shared/validate');
 const { applyVolume, peakAmplitude, wavDurationMs } = require('../src/shared/wav');
-const { lengthScaleForRate } = require('../src/main/tts');
+const { lengthScaleForRate, piperArguments } = require('../src/main/tts');
 const { createStore } = require('../src/main/store');
+const { loadVoices, loadVoicePacks, phonemeMapFitsBundledPiper, speakerIdFromConfig } = require('../src/main/voices');
 
 const EXPECTED = {
   'welcome-to-class': {
@@ -249,12 +250,208 @@ test('bundled Piper engine and public-domain voices are present', () => {
   assert.deepEqual(ids, ['linda', 'kristin', 'norman', 'john', 'cori']);
   for (const voice of manifest.voices) {
     const model = path.join(root, 'voices', voice.modelFile);
-    const config = path.join(root, 'voices', voice.configFile);
+    const configPath = path.join(root, 'voices', voice.configFile);
     assert.equal(fs.existsSync(model), true, voice.modelFile);
-    assert.equal(fs.existsSync(config), true, voice.configFile);
+    assert.equal(fs.existsSync(configPath), true, voice.configFile);
     assert.ok(fs.statSync(model).size > 40000000, voice.modelFile);
     assert.equal(voice.license, 'Public domain');
+    assert.ok(voice.region === 'United States' || voice.region === 'United Kingdom');
+    assert.ok(voice.gender === 'female' || voice.gender === 'male');
+    assert.equal(voice.engine, 'piper');
+    const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    assert.equal(phonemeMapFitsBundledPiper(config), true, voice.id);
   }
+  const loaded = loadVoices(path.join(root, 'voices'));
+  assert.deepEqual(loaded.map((voice) => voice.id), ids);
+  assert.equal(loaded.every((voice) => voice.installed === true && voice.speakerId === null), true);
   assert.equal(fs.existsSync(path.join(root, 'vendor', 'piper', 'piper.exe')), true);
   assert.equal(fs.existsSync(path.join(root, 'vendor', 'piper', 'espeak-ng-data')), true);
+});
+
+test('12-hour controls keep the stored 24-hour time', () => {
+  assert.deepEqual(to12Parts('00:00'), { hour: 12, minute: 0, suffix: 'AM' });
+  assert.deepEqual(to12Parts('08:05'), { hour: 8, minute: 5, suffix: 'AM' });
+  assert.deepEqual(to12Parts('12:00'), { hour: 12, minute: 0, suffix: 'PM' });
+  assert.deepEqual(to12Parts('13:15'), { hour: 1, minute: 15, suffix: 'PM' });
+  assert.equal(from12Parts(12, 0, 'AM'), '00:00');
+  assert.equal(from12Parts('12', '00', 'PM'), '12:00');
+  assert.equal(from12Parts('8', '05', 'AM'), '08:05');
+  assert.equal(from12Parts(1, 15, 'PM'), '13:15');
+  assert.equal(from12Parts(11, 59, 'PM'), '23:59');
+  assert.equal(format12(from12Parts(8, 5, 'AM')), '8:05 AM');
+});
+
+test('next announcement follows list order and skips disabled items', () => {
+  const now = new Date(2026, 9, 2, 8, 6, 0);
+  const items = [
+    sample('later', { title: 'Later', times: ['09:00'] }),
+    sample('soon', { title: 'Soon', times: ['08:10'] }),
+    sample('off', { title: 'Off', times: ['08:07'], enabled: false })
+  ];
+  assert.equal(upcomingLabel(items, now), 'Next announcement: Soon, Today 8:10 AM');
+  const tied = [
+    sample('first', { title: 'First', times: ['08:00'] }),
+    sample('second', { title: 'Second', times: ['08:00'] })
+  ];
+  assert.equal(upcomingLabel(tied, new Date(2026, 9, 2, 7, 0, 0)), 'Next announcement: First, Today 8:00 AM');
+  assert.equal(upcomingLabel([sample('quiet', { enabled: false, times: ['08:00'] })], now), 'No upcoming announcement.');
+});
+
+test('saved voice ids stay unchanged when the model is unavailable', () => {
+  const dir = tempDir();
+  const store = createStore(dir);
+  assert.equal(store.saveAnnouncement(sample('keep-voice', { voiceId: 'bindi', times: ['14:30'] })).ok, true);
+  const saved = JSON.parse(fs.readFileSync(path.join(dir, 'announcements.json'), 'utf8'));
+  const kept = saved.announcements.find((item) => item.id === 'keep-voice');
+  assert.equal(kept.voiceId, 'bindi');
+  assert.deepEqual(kept.times, ['14:30']);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('multi-speaker voices need a documented speaker, and Piper 2023 skips clustered phonemes', () => {
+  const root = path.join(__dirname, '..');
+  const australian = JSON.parse(fs.readFileSync(path.join(root, 'poc', 'australian-piper', 'en_AU-librivox-medium.onnx.json'), 'utf8'));
+  assert.equal(australian.num_speakers, 10);
+  assert.equal(phonemeMapFitsBundledPiper(australian), false);
+  assert.equal(speakerIdFromConfig(australian, { speakerKey: 'jenno' }), 1);
+  assert.equal(speakerIdFromConfig(australian, { speakerKey: 'lucy_burgoyne_1950_2014' }), 2);
+  assert.equal(speakerIdFromConfig(australian, { speakerKey: 'magdalena' }), 3);
+  assert.equal(speakerIdFromConfig(australian, { speakerKey: 'not-a-narrator' }), undefined);
+  const dir = tempDir();
+  fs.writeFileSync(path.join(dir, 'tiny.onnx'), 'not-a-model');
+  fs.writeFileSync(path.join(dir, 'tiny.onnx.json'), JSON.stringify({
+    num_speakers: 2,
+    phoneme_id_map: { a: [1], 'aɪ': [2] },
+    speaker_id_map: { jenno: 1 }
+  }));
+  fs.writeFileSync(path.join(dir, 'manifest.json'), JSON.stringify({
+    voices: [{
+      id: 'bindi',
+      name: 'Bindi (Australian female)',
+      modelFile: 'tiny.onnx',
+      configFile: 'tiny.onnx.json',
+      speakerKey: 'jenno'
+    }]
+  }));
+  const errors = [];
+  const loaded = loadVoices(dir, { info() {}, error(message) { errors.push(message); } });
+  assert.equal(loaded.length, 0);
+  assert.equal(errors.some((message) => message.includes('newer Piper')), true);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('Piper receives a speaker id only when the voice file documents one', () => {
+  const plain = piperArguments({ modelPath: 'model.onnx', outputFile: 'out.wav', rate: 1, speakerId: null });
+  assert.equal(plain.includes('--speaker'), false);
+  const spoken = piperArguments({ modelPath: 'model.onnx', outputFile: 'out.wav', rate: 1, speakerId: 1 });
+  assert.deepEqual(spoken.slice(-2), ['--speaker', '1']);
+});
+
+test('Piper 1.8 proof of concept synthesizes Bindi, Marlo, and Kirra', { timeout: 120000 }, (t) => {
+  const { spawnSync } = require('node:child_process');
+  const root = path.join(__dirname, '..');
+  const python = path.join(root, 'tmp', 'piper-poc', 'Scripts', 'python.exe');
+  const model = path.join(root, 'poc', 'australian-piper', 'en_AU-librivox-medium.onnx');
+  if (!fs.existsSync(python) || !fs.existsSync(model)) {
+    t.skip('Piper 1.8 and the Australian model are not on this computer.');
+    return;
+  }
+  const outDir = tempDir();
+  const scriptPath = path.join(outDir, 'synth.py');
+  fs.writeFileSync(scriptPath, [
+    'import wave',
+    'from pathlib import Path',
+    'from piper import PiperVoice, SynthesisConfig',
+    `voice = PiperVoice.load(${JSON.stringify(model)})`,
+    'text = "Welcome to class. Please find your seat and get ready to begin."',
+    `out = Path(${JSON.stringify(outDir)})`,
+    'for name, sid in [("bindi", 1), ("marlo", 2), ("kirra", 3)]:',
+    '    dest = out / f"{name}.wav"',
+    '    with wave.open(str(dest), "wb") as handle:',
+    '        voice.synthesize_wav(text, handle, SynthesisConfig(speaker_id=sid))',
+    ''
+  ].join('\n'));
+  const result = spawnSync(python, [scriptPath], { encoding: 'utf8', timeout: 90000 });
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  for (const name of ['bindi', 'marlo', 'kirra']) {
+    const bytes = fs.readFileSync(path.join(outDir, `${name}.wav`));
+    assert.ok(wavDurationMs(bytes) > 500, name);
+    assert.ok(peakAmplitude(bytes) > 200, name);
+  }
+  fs.rmSync(outDir, { recursive: true, force: true });
+});
+
+test('voice packs load only when the speech program and checksums match', () => {
+  const crypto = require('node:crypto');
+  const dir = tempDir();
+  const pack = path.join(dir, 'australian');
+  const engine = path.join(pack, 'engine');
+  fs.mkdirSync(path.join(engine, '_internal'), { recursive: true });
+  fs.writeFileSync(path.join(engine, 'piper18.exe'), 'engine');
+  const model = path.join(pack, 'voice.onnx');
+  const configPath = path.join(pack, 'voice.onnx.json');
+  fs.writeFileSync(model, 'model-bytes');
+  fs.writeFileSync(configPath, JSON.stringify({
+    num_speakers: 10,
+    speaker_id_map: { jenno: 1, lucy_burgoyne_1950_2014: 2, magdalena: 3 }
+  }));
+  const digest = crypto.createHash('sha256').update(fs.readFileSync(model)).digest('hex');
+  const configDigest = crypto.createHash('sha256').update(fs.readFileSync(configPath)).digest('hex');
+  fs.writeFileSync(path.join(pack, 'manifest.json'), JSON.stringify({
+    id: 'australian',
+    engine: 'piper18',
+    engineExe: 'engine/piper18.exe',
+    files: [
+      { path: 'voice.onnx', sha256: digest, bytes: fs.statSync(model).size },
+      { path: 'voice.onnx.json', sha256: configDigest, bytes: fs.statSync(configPath).size }
+    ],
+    voices: [
+      { id: 'bindi', name: 'Bindi (Australian female)', region: 'Australia', gender: 'female', speakerKey: 'jenno', modelFile: 'voice.onnx', configFile: 'voice.onnx.json' },
+      { id: 'missing', name: 'Missing', speakerKey: 'not-a-narrator', modelFile: 'voice.onnx', configFile: 'voice.onnx.json' }
+    ]
+  }));
+  const loaded = loadVoicePacks([dir]);
+  assert.equal(loaded.length, 1);
+  assert.equal(loaded[0].id, 'bindi');
+  assert.equal(loaded[0].engine, 'piper18');
+  assert.equal(loaded[0].speakerId, 1);
+  fs.writeFileSync(model, 'changed');
+  const rejected = loadVoicePacks([dir], { info() {}, error() {} });
+  assert.equal(rejected.length, 0);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('Kokoro proof of concept synthesizes a British female voice offline', { timeout: 120000 }, (t) => {
+  const { spawnSync } = require('node:child_process');
+  const root = path.join(__dirname, '..');
+  const python = path.join(root, 'tmp', 'kokoro-poc', 'Scripts', 'python.exe');
+  const model = path.join(root, 'poc', 'kokoro', 'kokoro-v1.0.onnx');
+  const voices = path.join(root, 'poc', 'kokoro', 'voices-v1.0.bin');
+  if (!fs.existsSync(python) || !fs.existsSync(model) || !fs.existsSync(voices)) {
+    t.skip('Kokoro proof-of-concept files are not on this computer.');
+    return;
+  }
+  const outDir = tempDir();
+  const scriptPath = path.join(outDir, 'synth.py');
+  const wavPath = path.join(outDir, 'emma.wav');
+  fs.writeFileSync(scriptPath, [
+    'import wave',
+    'import numpy as np',
+    'from kokoro_onnx import Kokoro',
+    `kokoro = Kokoro(${JSON.stringify(model)}, ${JSON.stringify(voices)})`,
+    'samples, rate = kokoro.create("Welcome to class. Please find your seat and get ready to begin.", voice="bf_emma", speed=1.0, lang="en-gb")',
+    'pcm = (np.clip(samples, -1, 1) * 32767).astype(np.int16)',
+    `with wave.open(${JSON.stringify(wavPath)}, "wb") as handle:`,
+    '    handle.setnchannels(1)',
+    '    handle.setsampwidth(2)',
+    '    handle.setframerate(rate)',
+    '    handle.writeframes(pcm.tobytes())',
+    ''
+  ].join('\n'));
+  const result = spawnSync(python, [scriptPath], { encoding: 'utf8', timeout: 90000 });
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  const bytes = fs.readFileSync(wavPath);
+  assert.ok(wavDurationMs(bytes) > 500);
+  assert.ok(peakAmplitude(bytes) > 200);
+  fs.rmSync(outDir, { recursive: true, force: true });
 });

@@ -18,10 +18,11 @@ const path = require('path');
 
 const { createLogger } = require('./logger');
 const { createStore } = require('./store');
-const { loadVoices } = require('./voices');
+const { loadVoices, loadVoicePacks } = require('./voices');
 const { synthesizeToFile, playWavFile } = require('./tts');
 const { createQueue } = require('../shared/queue');
 const { GRACE_MS, collectDue } = require('../shared/scheduler');
+const { SAMPLE_ANNOUNCEMENT } = require('../shared/defaults');
 const { clampVolume } = require('../shared/time');
 const { parseScheduleImport, exportScheduleJson } = require('../shared/validate');
 const { wavDurationMs, peakAmplitude, applyVolume } = require('../shared/wav');
@@ -29,7 +30,8 @@ const { wavDurationMs, peakAmplitude, applyVolume } = require('../shared/wav');
 const isSmoke = process.argv.includes('--smoke');
 const isSmokeUi = process.argv.includes('--smoke-ui');
 const isSmokeList = process.argv.includes('--smoke-list');
-const smokeMode = isSmoke || isSmokeUi || isSmokeList;
+const isSmokeVoices = process.argv.includes('--smoke-voices');
+const smokeMode = isSmoke || isSmokeUi || isSmokeList || isSmokeVoices;
 let startHidden = process.argv.includes('--hidden');
 
 let smokeDataDir = null;
@@ -73,11 +75,15 @@ const queue = createQueue();
 
 function installPaths() {
   const root = app.isPackaged ? process.resourcesPath : path.join(__dirname, '..', '..');
+  const packRoots = app.isPackaged
+    ? [path.join(path.dirname(process.execPath), 'voice-packs'), path.join(process.resourcesPath, 'voice-packs')]
+    : [path.join(root, 'dist', 'voice-packs'), path.join(root, 'voice-packs')];
   return {
     voices: path.join(root, 'voices'),
     piper: path.join(root, app.isPackaged ? 'piper' : path.join('vendor', 'piper')),
     tray: path.join(root, app.isPackaged ? 'tray.png' : path.join('assets', 'tray.png')),
-    icon: path.join(root, app.isPackaged ? 'icon.png' : path.join('assets', 'icon.png'))
+    icon: path.join(root, app.isPackaged ? 'icon.png' : path.join('assets', 'icon.png')),
+    packRoots
   };
 }
 
@@ -99,7 +105,15 @@ function publicState() {
   return {
     settings,
     announcements: store.getAnnouncements(),
-    voices: voices.map((voice) => ({ id: voice.id, name: voice.name, description: voice.description })),
+    voices: voices.map((voice) => ({
+      id: voice.id,
+      name: voice.name,
+      description: voice.description,
+      region: voice.region,
+      gender: voice.gender,
+      engine: voice.engine,
+      installed: voice.installed === true
+    })),
     firstRun: settings.firstRunComplete !== true,
     paths: {
       data: app.getPath('userData'),
@@ -153,9 +167,16 @@ async function speakNow(item) {
   publishStatus({ phase: 'generating', title: item.title || 'Announcement', announcementId: item.announcementId || '', message: '' });
   try {
     await synthesizeToFile({
+      engine: voice.engine,
       piperExe: path.join(paths.piper, 'piper.exe'),
       piperDir: paths.piper,
+      engineExe: voice.engineExe,
+      engineDir: voice.engineDir,
       modelPath: voice.modelPath,
+      voicesPath: voice.voicesPath,
+      kokoroVoice: voice.kokoroVoice,
+      lang: voice.lang,
+      speakerId: voice.speakerId,
       text: item.text,
       rate: item.rate,
       outputFile: wavPath
@@ -552,6 +573,25 @@ async function runUiSmoke(win) {
     '  const removed = await window.classbell.deleteAnnouncement(copy.id);',
     '  await window.classbell.deleteAnnouncement("draft-placeholder");',
     '  const exported = await window.classbell.exportScheduleData();',
+    '  document.querySelector("[data-announcement-id=\'welcome-to-class\'] [data-action=\'edit\']").click();',
+    '  const editorTitle = document.getElementById("editor-title").value;',
+    '  const editorOpen = document.getElementById("view-editor").hidden === false;',
+    '  const hour = document.querySelector("#editor-times [data-part=hour]").value;',
+    '  const minute = document.querySelector("#editor-times [data-part=minute]").value;',
+    '  const suffix = document.querySelector("#editor-times [data-part=suffix]").value;',
+    '  const stored = document.querySelector("#editor-times .stored-time").textContent;',
+    '  const minuteEl = document.querySelector("#editor-times [data-part=minute]");',
+    '  minuteEl.value = "15";',
+    '  minuteEl.dispatchEvent(new Event("change"));',
+    '  const storedAfter = document.querySelector("#editor-times .stored-time").textContent;',
+    '  document.getElementById("editor-add-time").click();',
+    '  const timeCount = document.querySelectorAll("#editor-times .time-row").length;',
+    '  document.querySelector("#editor-times .time-row:last-child button").click();',
+    '  const timeCountAfterRemove = document.querySelectorAll("#editor-times .time-row").length;',
+    '  document.getElementById("editor-form").requestSubmit();',
+    '  await new Promise((resolve) => setTimeout(resolve, 500));',
+    '  const afterSave = await window.classbell.getState();',
+    '  const welcomeTimes = afterSave.announcements.find((item) => item.id === "welcome-to-class").times;',
     '  return {',
     '    ready: document.body.dataset.ready,',
     '    cards: document.querySelectorAll("[data-announcement-id]").length,',
@@ -561,20 +601,91 @@ async function runUiSmoke(win) {
     '    enabledAfter: toggle.state.announcements.find((item) => item.id === "attendance-reminder").enabled,',
     '    copyFound: Boolean(copy),',
     '    countAfterDelete: removed.state.announcements.length,',
-    '    exportOk: exported.json.includes("Welcome to Class") && exported.json.includes("08:00")',
+    '    exportOk: exported.json.includes("Welcome to Class") && exported.json.includes("08:00"),',
+    '    navHidden: document.getElementById("app-nav").hidden,',
+    '    announcementsTab: document.getElementById("tab-announcements").textContent,',
+    '    settingsTab: document.getElementById("tab-settings").textContent,',
+    '    next: document.getElementById("next-up").textContent,',
+    '    editorTitle: editorTitle,',
+    '    editorOpen: editorOpen,',
+    '    hour: hour,',
+    '    minute: minute,',
+    '    suffix: suffix,',
+    '    stored: stored,',
+    '    storedAfter: storedAfter,',
+    '    timeCount: timeCount,',
+    '    timeCountAfterRemove: timeCountAfterRemove,',
+    '    welcomeTimes: welcomeTimes,',
+    '    backToList: document.getElementById("view-list").hidden === false',
     '  };',
     '})()'
   ].join('\n'));
   console.log(JSON.stringify(result));
   if (result.ready !== 'list') throw new Error('Announcement list did not open.');
   if (result.cards !== 6) throw new Error(`Expected 6 announcements, saw ${result.cards}.`);
-  if (!result.welcome.includes('Welcome to Class') || !result.welcome.includes('8:00 AM')) throw new Error('Sample welcome announcement was not shown.');
+  if (!result.welcome.includes('Welcome to Class') || !result.welcome.includes('8:15 AM')) throw new Error('Sample welcome announcement was not shown.');
   if (result.draftOk !== true) throw new Error('Placeholder draft was not saved.');
   if (result.blocked !== false) throw new Error('Placeholder was enabled.');
   if (result.enabledAfter !== false) throw new Error('Disable did not save.');
   if (!result.copyFound) throw new Error('Duplicate did not create a copy.');
   if (result.countAfterDelete !== 7) throw new Error('Delete did not remove the copy.');
   if (!result.exportOk) throw new Error('Export did not include the schedule.');
+  if (result.navHidden !== false) throw new Error('Announcement navigation was hidden.');
+  if (!String(result.announcementsTab).includes('Announcements')) throw new Error('Announcements tab was missing.');
+  if (!String(result.settingsTab).includes('Settings')) throw new Error('Settings tab was missing.');
+  if (!String(result.next).includes('Next announcement:')) throw new Error('Next announcement was missing.');
+  if (result.editorOpen !== true) throw new Error('Editor did not open.');
+  if (result.editorTitle !== 'Welcome to Class') throw new Error('Editor did not load the announcement.');
+  if (result.hour !== '8' || result.minute !== '00' || result.suffix !== 'AM') throw new Error('Editor time was not 8:00 AM.');
+  if (!String(result.stored).includes('08:00')) throw new Error('Stored time was not 08:00.');
+  if (!String(result.storedAfter).includes('08:15')) throw new Error('Changed time was not stored as 08:15.');
+  if (result.timeCount !== 2) throw new Error('Add Time did not add a time.');
+  if (result.timeCountAfterRemove !== 1) throw new Error('Remove Time did not remove a time.');
+  if (!Array.isArray(result.welcomeTimes) || result.welcomeTimes.join(',') !== '08:15') throw new Error('Saved time did not persist.');
+  if (result.backToList !== true) throw new Error('Save did not return to announcements.');
+}
+
+async function speakVoiceFile(voice) {
+  const wavPath = path.join(os.tmpdir(), `classbell-voice-${voice.id}-${Date.now()}.wav`);
+  const started = Date.now();
+  await synthesizeToFile({
+    engine: voice.engine,
+    piperExe: path.join(paths.piper, 'piper.exe'),
+    piperDir: paths.piper,
+    engineExe: voice.engineExe,
+    engineDir: voice.engineDir,
+    modelPath: voice.modelPath,
+    voicesPath: voice.voicesPath,
+    kokoroVoice: voice.kokoroVoice,
+    lang: voice.lang,
+    speakerId: voice.speakerId,
+    text: SAMPLE_ANNOUNCEMENT,
+    rate: 1,
+    outputFile: wavPath
+  });
+  const bytes = fs.readFileSync(wavPath);
+  const duration = wavDurationMs(bytes);
+  const peak = peakAmplitude(bytes);
+  const generateMs = Date.now() - started;
+  console.log(`WAV voice=${voice.id} engine=${voice.engine} bytes=${bytes.length} durationMs=${duration} peak=${peak} generateMs=${generateMs}`);
+  if (!duration || duration < 500 || peak < 200) {
+    throw new Error(`${voice.id} did not produce speech (duration=${duration}, peak=${peak}).`);
+  }
+  try {
+    await playWavFile(wavPath, duration + 15000);
+    console.log(`PLAYBACK_OK ${voice.id}`);
+  } finally {
+    fs.rmSync(wavPath, { force: true });
+  }
+}
+
+async function runVoicePackSmoke() {
+  const sequence = ['linda', 'bindi', 'bindi', 'alice', 'marlo', 'emma', 'kirra', 'cori'];
+  for (const id of sequence) {
+    const voice = voices.find((item) => item.id === id);
+    if (!voice) throw new Error(`Voice ${id} is not available to the packaged app.`);
+    await speakVoiceFile(voice);
+  }
 }
 
 function finish(code) {
@@ -594,7 +705,17 @@ async function start() {
   paths = installPaths();
   log = createLogger(path.join(app.getPath('userData'), 'logs', 'classbell.log'));
   store = createStore(app.getPath('userData'), { log });
-  voices = loadVoices(paths.voices, log);
+  const bundledVoices = loadVoices(paths.voices, log);
+  const seenVoiceIds = new Set(bundledVoices.map((voice) => voice.id));
+  const packVoices = loadVoicePacks(paths.packRoots, log).filter((voice) => {
+    if (seenVoiceIds.has(voice.id)) {
+      log.error(`Voice pack id ${voice.id} matches a built-in voice, so the pack copy was not loaded.`);
+      return false;
+    }
+    seenVoiceIds.add(voice.id);
+    return true;
+  });
+  voices = bundledVoices.concat(packVoices);
   cleanupTempAudio();
   log.info(`ClassBell ${app.getVersion()} started. Data folder: ${app.getPath('userData')}`);
   if (voices.length === 0) log.error('No offline voices are available.');
@@ -626,6 +747,12 @@ async function start() {
 
   if (isSmoke) {
     await runPiperSmoke();
+    finish(0);
+    return;
+  }
+
+  if (isSmokeVoices) {
+    await runVoicePackSmoke();
     finish(0);
     return;
   }

@@ -1,7 +1,7 @@
 {
   "name": "classbell",
   "productName": "ClassBell",
-  "version": "1.0.0",
+  "version": "1.1.0-beta.3",
   "description": "Offline classroom announcement scheduler for Windows",
   "main": "src/main/main.js",
   "private": true,
@@ -10,10 +10,12 @@
     "test": "node --test",
     "check": "node scripts/check-syntax.js",
     "vendor": "node scripts/fetch-vendor.js",
+    "voice-packs": "node scripts/build-voice-packs.js",
     "icon": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/make-icon.ps1",
     "smoke": "electron . --smoke",
     "smoke-ui": "electron . --smoke-ui",
     "smoke-list": "electron . --smoke-list",
+    "smoke-voices": "electron . --smoke-voices",
     "dist": "set CSC_IDENTITY_AUTO_DISCOVERY=false&& electron-builder --win nsis --publish never"
   },
   "devDependencies": {
@@ -41,6 +43,14 @@
       {
         "from": "voices",
         "to": "voices"
+      },
+      {
+        "from": "dist/voice-packs",
+        "to": "voice-packs"
+      },
+      {
+        "from": "THIRD_PARTY_NOTICES.md",
+        "to": "THIRD_PARTY_NOTICES.md"
       },
       {
         "from": "assets/tray.png",
@@ -75,7 +85,8 @@
       "uninstallerIcon": "build/icon.ico",
       "installerHeaderIcon": "build/icon.ico",
       "artifactName": "ClassBell-Setup-${version}.${ext}",
-      "runAfterFinish": false
+      "runAfterFinish": false,
+      "deleteAppDataOnUninstall": false
     },
     "publish": null
   }

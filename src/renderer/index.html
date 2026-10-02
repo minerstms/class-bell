@@ -25,6 +25,11 @@
       <button id="banner-dismiss" type="button">Dismiss</button>
     </p>
 
+    <nav id="app-nav" class="tabs" hidden>
+      <button id="tab-announcements" class="tab" type="button">Announcements</button>
+      <button id="tab-settings" class="tab" type="button">Settings</button>
+    </nav>
+
     <section id="view-welcome">
       <h1>ClassBell</h1>
       <p id="welcome-line">Welcome. Your ClassBell is ready.</p>
@@ -36,24 +41,28 @@
     </section>
 
     <section id="view-list" hidden>
-      <h1>ClassBell</h1>
-      <p id="today" class="date-line"></p>
-      <p id="clock" class="clock">--:--:--</p>
-      <p class="status-line">
-        <span id="scheduler-dot" data-state="running"></span>
-        <span id="scheduler-label">Scheduler running</span>
-      </p>
-      <p id="live-status" aria-live="polite">Scheduler running.</p>
+      <div class="sticky">
+        <h1>Announcements</h1>
+        <p id="today" class="date-line"></p>
+        <p id="clock" class="clock">--:--:--</p>
+        <p class="status-line">
+          <span id="scheduler-dot" data-state="running"></span>
+          <span id="scheduler-label">Scheduler running</span>
+        </p>
+        <p id="live-status" aria-live="polite">Scheduler running.</p>
+        <p id="next-up" class="next-up" aria-live="polite">Next announcement: …</p>
+        <div class="stack">
+          <button id="pause-button" type="button">Pause announcements</button>
+          <button id="add-button" class="primary" type="button">Add Announcement</button>
+        </div>
+      </div>
       <p class="grace-note">ClassBell checks the Windows clock. An announcement speaks once, and only if it is no more than 30 seconds late. After sleep or a clock change, older missed announcements stay quiet.</p>
       <p id="list-count"></p>
+      <div id="list"></div>
       <div class="stack">
-        <button id="pause-button" type="button">Pause announcements</button>
-        <button id="add-button" class="primary" type="button">Add Announcement</button>
         <button id="import-button" type="button">Import Schedule</button>
         <button id="export-button" type="button">Export Schedule</button>
-        <button id="settings-button" type="button">Settings</button>
       </div>
-      <div id="list"></div>
     </section>
 
     <section id="view-editor" hidden>
@@ -67,7 +76,7 @@
         <textarea id="editor-message" maxlength="8000"></textarea>
 
         <h2>Times</h2>
-        <p>Times are stored as 24-hour HH:MM and shown in 12-hour time.</p>
+        <p>Choose the hour, minute, and AM or PM. ClassBell stores each time as 24-hour HH:MM.</p>
         <div id="editor-times"></div>
         <p id="editor-warning" class="warning" hidden></p>
         <div class="stack">
@@ -96,7 +105,7 @@
         <label for="editor-notes">Notes</label>
         <textarea id="editor-notes" maxlength="2000"></textarea>
 
-        <div class="stack">
+        <div class="stack editor-actions">
           <button id="editor-test" type="button">Test Voice</button>
           <button id="editor-save" class="primary" type="submit">Save</button>
           <button id="editor-cancel" type="button">Cancel</button>
@@ -110,6 +119,8 @@
         <label for="settings-voice">Default voice</label>
         <select id="settings-voice"></select>
         <p id="settings-voice-help"></p>
+        <p id="voice-sample">Test Voice says: Welcome to class. Please find your seat and get ready to begin.</p>
+        <p id="voice-pack-note">All of these voices are installed with ClassBell and work offline. No Python installation is required.</p>
 
         <label for="settings-rate">Default rate <span id="settings-rate-label">1.00×</span></label>
         <input id="settings-rate" type="range" min="0.75" max="1.35" step="0.05" value="1">

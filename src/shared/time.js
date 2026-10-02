@@ -79,6 +79,50 @@ function nextLabel(announcement, now) {
   return `${when} ${format12(next.hhmm)}`;
 }
 
+function to12Parts(hhmm) {
+  const parsed = parseTime(hhmm);
+  if (!parsed) return { hour: 8, minute: 0, suffix: 'AM' };
+  return {
+    hour: parsed.h % 12 || 12,
+    minute: parsed.min,
+    suffix: parsed.h >= 12 ? 'PM' : 'AM'
+  };
+}
+
+function from12Parts(hour, minute, suffix) {
+  let h = Number(hour);
+  const m = Number(minute);
+  if (!Number.isInteger(h) || h < 1 || h > 12) return null;
+  if (!Number.isInteger(m) || m < 0 || m > 59) return null;
+  const marker = String(suffix || '').toUpperCase();
+  if (marker !== 'AM' && marker !== 'PM') return null;
+  if (marker === 'AM') h = h === 12 ? 0 : h;
+  else h = h === 12 ? 12 : h + 12;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+
+function nextUpcoming(announcements, now) {
+  const clock = now || new Date();
+  let best = null;
+  (Array.isArray(announcements) ? announcements : []).forEach((announcement, index) => {
+    if (!announcement || announcement.enabled !== true || announcement.placeholder) return;
+    const next = nextDate(announcement, clock);
+    if (!next) return;
+    const sameTime = best && next.dt.getTime() === best.dt.getTime();
+    if (!best || next.dt < best.dt || (sameTime && index < best.index)) {
+      best = { announcement, hhmm: next.hhmm, dt: next.dt, index };
+    }
+  });
+  return best;
+}
+
+function upcomingLabel(announcements, now) {
+  const clock = now || new Date();
+  const best = nextUpcoming(announcements, clock);
+  if (!best) return 'No upcoming announcement.';
+  return `Next announcement: ${best.announcement.title}, ${nextLabel(best.announcement, clock)}`;
+}
+
 function clampRate(value, fallback) {
   const number = Number(value);
   if (!Number.isFinite(number)) return fallback;
@@ -110,6 +154,10 @@ module.exports = {
   dayCode,
   nextDate,
   nextLabel,
+  to12Parts,
+  from12Parts,
+  nextUpcoming,
+  upcomingLabel,
   clampRate,
   clampVolume,
   normalizeDays

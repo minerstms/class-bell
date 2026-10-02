@@ -15,3 +15,5 @@ vendor/piper/*.dll
 vendor/piper/*.ort
 vendor/piper/espeak-ng-data/
 voices/*.onnx
+poc/**/*.onnx
+poc/**/*.bin

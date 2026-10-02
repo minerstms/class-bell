@@ -60,4 +60,27 @@ The five model files total about 351 MB. That is most of the installer size.
 - UK Northern English male: target dataset is CC BY-SA, but the model is finetuned from Lessac.
 - Australian English: the official Piper voice set has no Australian model with a clear redistribution license.
 
-More voices can be added later by placing a Piper `.onnx` file, its `.onnx.json` file, and a new entry in `voices/manifest.json`.
+More voices can be added later by placing a Piper `.onnx` file, its `.onnx.json` file, and a new entry in `voices/manifest.json`. ClassBell loads a voice only when its phoneme map uses one codepoint per phoneme, which is what Piper 2023.11.14 accepts. A multi-speaker voice also needs a `speakerKey` that appears in that file’s `speaker_id_map`.
+
+### Australian English model that was checked and not bundled
+
+`DataCraftsmanAustralia/piper-en_AU-librivox-medium` was checked on 2026-10-02.
+
+- Files: `en_AU-librivox-medium.onnx` (77,072,486 bytes) and `en_AU-librivox-medium.onnx.json`
+- License: CC BY 4.0. Commercial use and redistribution are allowed. Attribution is required, including Jenny (Dioco) for the `en_GB-jenny_dioco-medium` base checkpoint. The training recordings are public-domain LibriVox audio. The trainer `OHF-Voice/piper1-gpl` is GPL-3.0 software and is not included in the model file. Source: the model card and `ATTRIBUTION.md` on Hugging Face.
+- Speakers, from `speaker_id_map` in the downloaded config: jenno = 1 (Bindi, female), lucy_burgoyne_1950_2014 = 2 (Marlo, female), magdalena = 3 (Kirra, female). The same file lists seven more speakers, ids 0 and 4 through 9.
+- Piper 2023.11.14-2, the engine in this app, refuses the config: `"aɪ" is not a single codepoint`. The model was trained for Piper 1.5 / 1.8, which is distributed as a Python package. ClassBell does not ship Python.
+- Piper 1.8.0 can synthesize Bindi, Marlo, and Kirra. The optional Australian voice pack freezes that Piper 1.8.0 program with PyInstaller 6.16.0 so teachers do not install Python. The pack is installed with ClassBell in `resources/voice-packs`. Teachers do not copy it by hand.
+- Speaker ids used by the pack, from the model config: jenno = 1 (Bindi), lucy_burgoyne_1950_2014 = 2 (Marlo), magdalena = 3 (Kirra).
+- A copy of the config used for that check is in `poc/australian-piper/`. The built pack is written to `dist/voice-packs/australian/`.
+
+### Kokoro, checked and not bundled
+
+`kokoro-onnx` 0.6.1 and Kokoro v1.0 were checked on 2026-10-02 as a separate Python proof of concept. They are not part of ClassBell.
+
+- Library: https://github.com/thewh1teagle/kokoro-onnx states MIT for `kokoro-onnx` and Apache 2.0 for the Kokoro model.
+- Runtime pieces installed for the proof of concept: `onnxruntime`, `phonemizer`, and `espeakng-loader`. Those are Python packages. `espeakng-loader` brings espeak-ng, which is GPL-3.0.
+- Model files: `kokoro-v1.0.onnx` is 325,532,387 bytes. `voices-v1.0.bin` is 28,214,398 bytes. The voices file lists British female styles `bf_alice`, `bf_emma`, `bf_isabella`, and `bf_lily`.
+- The optional British voice pack freezes kokoro-onnx 0.6.1 with PyInstaller 6.16.0, including its Python runtime, ONNX Runtime, phonemizer, and espeakng-loader. Teachers do not install Python. The pack is installed with ClassBell in `resources/voice-packs`. Teachers do not copy it by hand.
+- Voices exposed from that pack are Alice (`bf_alice`) and Emma (`bf_emma`).
+- The built pack is written to `dist/voice-packs/british/`. No download button was added.

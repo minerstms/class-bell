@@ -1,6 +1,7 @@
 'use strict';
 
 const DEFAULT_VOICE_ID = 'linda';
+const SAMPLE_ANNOUNCEMENT = 'Welcome to class. Please find your seat and get ready to begin.';
 
 const RAW_ANNOUNCEMENTS = [
   {
@@ -100,6 +101,7 @@ function createDefaultSettings() {
 
 module.exports = {
   DEFAULT_VOICE_ID,
+  SAMPLE_ANNOUNCEMENT,
   createDefaultAnnouncements,
   createDefaultSettings
 };

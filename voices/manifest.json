@@ -3,6 +3,9 @@
     {
       "id": "linda",
       "name": "Linda (US female)",
+      "region": "United States",
+      "gender": "female",
+      "engine": "piper",
       "description": "Clear US English female voice from the public-domain LJ Speech recordings.",
       "modelFile": "en_US-ljspeech-high.onnx",
       "configFile": "en_US-ljspeech-high.onnx.json",
@@ -13,6 +16,9 @@
     {
       "id": "kristin",
       "name": "Kristin (US female)",
+      "region": "United States",
+      "gender": "female",
+      "engine": "piper",
       "description": "US English female voice trained from public-domain LibriVox recordings.",
       "modelFile": "en_US-kristin-medium.onnx",
       "configFile": "en_US-kristin-medium.onnx.json",
@@ -23,6 +29,9 @@
     {
       "id": "norman",
       "name": "Norman (US male)",
+      "region": "United States",
+      "gender": "male",
+      "engine": "piper",
       "description": "US English male voice trained from public-domain LibriVox recordings.",
       "modelFile": "en_US-norman-medium.onnx",
       "configFile": "en_US-norman-medium.onnx.json",
@@ -33,6 +42,9 @@
     {
       "id": "john",
       "name": "John (US male)",
+      "region": "United States",
+      "gender": "male",
+      "engine": "piper",
       "description": "US English male voice. Public domain. Trained onward from the public-domain Kristin voice.",
       "modelFile": "en_US-john-medium.onnx",
       "configFile": "en_US-john-medium.onnx.json",
@@ -43,6 +55,9 @@
     {
       "id": "cori",
       "name": "Cori (UK female)",
+      "region": "United Kingdom",
+      "gender": "female",
+      "engine": "piper",
       "description": "UK English female voice trained from public-domain LibriVox recordings.",
       "modelFile": "en_GB-cori-medium.onnx",
       "configFile": "en_GB-cori-medium.onnx.json",

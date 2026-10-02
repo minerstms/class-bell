@@ -13,6 +13,13 @@ function $(id) {
 function showView(name) {
   for (const view of views) $(`view-${view}`).hidden = view !== name;
   document.body.dataset.view = name;
+  const nav = $('app-nav');
+  nav.hidden = name === 'welcome';
+  const onAnnouncements = name === 'list' || name === 'editor';
+  $('tab-announcements').classList.toggle('on', onAnnouncements);
+  $('tab-settings').classList.toggle('on', name === 'settings');
+  $('tab-announcements').setAttribute('aria-current', onAnnouncements ? 'page' : 'false');
+  $('tab-settings').setAttribute('aria-current', name === 'settings' ? 'page' : 'false');
   window.scrollTo(0, 0);
 }
 
@@ -45,18 +52,37 @@ function voiceName(id) {
   return voice ? voice.name : 'Default voice';
 }
 
+const REGION_ORDER = ['Australia', 'United Kingdom', 'United States'];
+
 function fillVoices(select, selected) {
   select.replaceChildren();
-  for (const voice of state.voices || []) {
-    const option = document.createElement('option');
-    option.value = voice.id;
-    option.textContent = voice.name;
-    select.append(option);
+  const voices = state.voices || [];
+  const regions = [];
+  for (const voice of voices) {
+    const region = voice.region || 'Other';
+    if (!regions.includes(region)) regions.push(region);
+  }
+  regions.sort((a, b) => {
+    const ai = REGION_ORDER.indexOf(a);
+    const bi = REGION_ORDER.indexOf(b);
+    return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+  });
+  for (const region of regions) {
+    const group = document.createElement('optgroup');
+    group.label = region;
+    for (const voice of voices) {
+      if ((voice.region || 'Other') !== region) continue;
+      const option = document.createElement('option');
+      option.value = voice.id;
+      option.textContent = voice.name;
+      group.append(option);
+    }
+    select.append(group);
   }
   if (selected && ![...select.options].some((option) => option.value === selected)) {
     const missing = document.createElement('option');
     missing.value = selected;
-    missing.textContent = 'Missing voice';
+    missing.textContent = 'Saved voice is not installed';
     select.append(missing);
   }
   if (select.options.length) select.value = selected || state.settings.defaultVoiceId;
@@ -64,8 +90,12 @@ function fillVoices(select, selected) {
 
 function voiceHelp(id) {
   const voice = (state.voices || []).find((item) => item.id === id);
-  if (voice) return voice.description;
-  return 'This voice is not installed. ClassBell will use the default voice until you choose another.';
+  if (!voice) {
+    return 'This saved voice is not installed. ClassBell speaks with the default voice, and the saved voice setting stays unchanged.';
+  }
+  const gender = voice.gender === 'female' ? 'Female' : voice.gender === 'male' ? 'Male' : '';
+  const engine = voice.engine === 'kokoro' ? 'Kokoro' : 'Piper';
+  return [voice.description, voice.region, gender, 'Installed', 'Works offline', engine].filter(Boolean).join(' · ');
 }
 
 function formatClock(date) {
@@ -99,6 +129,7 @@ function renderChrome() {
   const phase = state.status && (state.status.phase === 'speaking' || state.status.phase === 'generating');
   dot.dataset.state = paused ? 'paused' : phase ? 'speaking' : 'running';
   $('live-status').textContent = statusLabel();
+  $('next-up').textContent = window.classbell.upcomingLabel(state.announcements);
   $('today').textContent = new Date().toLocaleDateString(undefined, {
     weekday: 'long',
     month: 'long',
@@ -178,7 +209,7 @@ function renderCards() {
     const actions = document.createElement('div');
     actions.className = 'stack';
     actions.append(
-      actionButton(announcement.placeholder ? 'Incomplete — will not speak' : (announcement.enabled ? 'On' : 'Off'), 'toggle', announcement.placeholder, announcement.enabled && !announcement.placeholder),
+      actionButton(announcement.placeholder ? 'Incomplete — will not speak' : (announcement.enabled ? 'Enabled' : 'Disabled'), 'toggle', announcement.placeholder, announcement.enabled && !announcement.placeholder),
       actionButton('Edit', 'edit'),
       actionButton('Test / Play', 'play', announcement.placeholder),
       actionButton('Duplicate', 'duplicate'),
@@ -199,25 +230,55 @@ function actionButton(label, action, disabled, on, danger) {
   button.disabled = Boolean(disabled);
   if (on) button.classList.add('on');
   if (danger) button.classList.add('danger');
+  if (action === 'toggle') {
+    button.setAttribute('role', 'switch');
+    button.setAttribute('aria-checked', on ? 'true' : 'false');
+  }
   return button;
+}
+
+function timeSelect(part, values, selected, index) {
+  const select = document.createElement('select');
+  select.dataset.part = part;
+  select.id = `time-${index}-${part}`;
+  const label = document.createElement('label');
+  label.htmlFor = select.id;
+  const names = { hour: 'Hour', minute: 'Minute', suffix: 'AM or PM' };
+  label.textContent = names[part];
+  for (const value of values) {
+    const option = document.createElement('option');
+    option.value = String(value);
+    option.textContent = String(value);
+    select.append(option);
+  }
+  select.value = String(selected);
+  return { label, select };
 }
 
 function renderTimes() {
   const wrap = $('editor-times');
   wrap.replaceChildren();
   editor.times.forEach((hhmm, index) => {
+    const parts = window.classbell.to12Parts(hhmm);
     const row = document.createElement('div');
     row.className = 'time-row';
-    const label = document.createElement('label');
-    label.textContent = window.classbell.format12(hhmm);
-    const input = document.createElement('input');
-    input.type = 'time';
-    input.value = hhmm;
-    input.addEventListener('input', () => {
-      if (input.value) editor.times[index] = input.value;
-      label.textContent = window.classbell.format12(editor.times[index]);
+    const hour = timeSelect('hour', [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], parts.hour, index);
+    const minutes = [];
+    for (let minute = 0; minute < 60; minute += 1) minutes.push(String(minute).padStart(2, '0'));
+    const minute = timeSelect('minute', minutes, String(parts.minute).padStart(2, '0'), index);
+    const suffix = timeSelect('suffix', ['AM', 'PM'], parts.suffix, index);
+    const stored = document.createElement('p');
+    stored.className = 'stored-time';
+    const commit = () => {
+      const next = window.classbell.from12Parts(hour.select.value, minute.select.value, suffix.select.value);
+      if (next) editor.times[index] = next;
+      stored.textContent = `Stored ${editor.times[index]}`;
       updateEditorWarning();
-    });
+    };
+    hour.select.addEventListener('change', commit);
+    minute.select.addEventListener('change', commit);
+    suffix.select.addEventListener('change', commit);
+    stored.textContent = `Stored ${hhmm}`;
     const remove = document.createElement('button');
     remove.type = 'button';
     remove.textContent = 'Remove Time';
@@ -226,7 +287,7 @@ function renderTimes() {
       renderTimes();
       updateEditorWarning();
     });
-    row.append(label, input, remove);
+    row.append(hour.label, hour.select, minute.label, minute.select, suffix.label, suffix.select, stored, remove);
     wrap.append(row);
   });
 }
@@ -312,6 +373,7 @@ function tickClock() {
     const announcement = state.announcements.find((item) => item.id === node.dataset.nextFor);
     if (announcement) node.textContent = `Next: ${window.classbell.nextLabel(announcement)}`;
   }
+  $('next-up').textContent = window.classbell.upcomingLabel(state.announcements);
 }
 
 async function speakWelcome() {
@@ -422,7 +484,16 @@ function bind() {
   });
   $('import-button').addEventListener('click', importSchedule);
   $('export-button').addEventListener('click', exportSchedule);
-  $('settings-button').addEventListener('click', openSettings);
+  $('tab-announcements').addEventListener('click', () => {
+    editor = null;
+    showView('list');
+    renderCards();
+    renderChrome();
+  });
+  $('tab-settings').addEventListener('click', () => {
+    editor = null;
+    openSettings();
+  });
   $('list').addEventListener('click', async (event) => {
     const button = event.target.closest('button');
     if (!button || button.disabled) return;
@@ -519,7 +590,7 @@ function bind() {
     }
   });
   $('editor-test').addEventListener('click', async () => {
-    const message = $('editor-message').value.trim() || 'This is a ClassBell voice test.';
+    const message = $('editor-message').value.trim() || window.classbell.sampleAnnouncement();
     applyResult(await window.classbell.speak({
       title: $('editor-title').value.trim() || 'Voice test',
       text: message,
@@ -583,7 +654,7 @@ function bind() {
   $('settings-test').addEventListener('click', async () => {
     applyResult(await window.classbell.speak({
       title: 'Test',
-      text: 'ClassBell test. This is your default voice.',
+      text: window.classbell.sampleAnnouncement(),
       voiceId: $('settings-voice').value,
       rate: Number($('settings-rate').value),
       volume: Number($('settings-volume').value)

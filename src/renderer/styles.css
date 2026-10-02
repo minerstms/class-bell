@@ -235,7 +235,44 @@ input[type="range"] { width: 100%; height: 36px; }
 }
 
 .time-row button,
-.time-row input { width: 100%; }
+.time-row input,
+.time-row select { width: 100%; }
+
+.tabs {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0 0 16px;
+}
+
+button.tab {
+  font-size: 28px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.sticky {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--paper);
+  padding-bottom: 8px;
+}
+
+.next-up {
+  font-size: 24px;
+  font-weight: 700;
+  margin: 0 0 12px;
+}
+
+.stored-time { margin: 0; }
+
+.editor-actions {
+  position: sticky;
+  bottom: 0;
+  background: var(--paper);
+  padding-top: 8px;
+}
 
 .modal {
   position: fixed;
