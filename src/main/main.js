@@ -12,6 +12,7 @@ const {
   nativeImage
 } = require('electron');
 const crypto = require('crypto');
+const { execFile } = require('child_process');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -21,7 +22,7 @@ const { createStore } = require('./store');
 const { loadVoices, loadVoicePacks } = require('./voices');
 const { synthesizeToFile, playWavFile } = require('./tts');
 const { createQueue } = require('../shared/queue');
-const { GRACE_MS, collectDue } = require('../shared/scheduler');
+const { GRACE_MS, collectDue, collectClockChime } = require('../shared/scheduler');
 const { SAMPLE_ANNOUNCEMENT } = require('../shared/defaults');
 const { clampVolume } = require('../shared/time');
 const { parseScheduleImport, exportScheduleJson } = require('../shared/validate');
@@ -67,6 +68,9 @@ let voices = [];
 let paths = null;
 let timer = null;
 let lastTickMs = 0;
+let sessionLocked = false;
+let presentationActive = false;
+let presentationCheckStarted = false;
 let isQuitting = false;
 let pendingImport = null;
 let currentStatus = { phase: 'idle', title: '', announcementId: '', message: '' };
@@ -216,6 +220,7 @@ function tick() {
   const settings = store.getSettings();
   const fired = store.loadFired(now);
   for (const key of pendingKeys) fired.add(key);
+  if (scheduledSpeechHeld(settings)) return;
   const due = collectDue(store.getAnnouncements(), now, fired, { graceMs: GRACE_MS, paused: settings.paused });
   for (const item of due) {
     pendingKeys.add(item.key);
@@ -231,6 +236,55 @@ function tick() {
       hhmm: item.hhmm
     }, false);
   }
+  const chime = collectClockChime(now, settings, fired, { graceMs: GRACE_MS });
+  if (chime) {
+    pendingKeys.add(chime.key);
+    enqueueSpeech({
+      kind: 'clock',
+      key: chime.key,
+      announcementId: '',
+      title: chime.title,
+      text: chime.text,
+      voiceId: settings.defaultVoiceId,
+      rate: settings.defaultRate,
+      volume: settings.defaultVolume,
+      hhmm: chime.hhmm
+    }, false);
+  }
+}
+
+function scheduledSpeechHeld(settings) {
+  if (settings.suppressWhenLocked === true && sessionLocked) return true;
+  if (settings.suppressWhenPresenting === true && presentationActive) return true;
+  return false;
+}
+
+function refreshPresentation() {
+  if (!store || store.getSettings().suppressWhenPresenting !== true) {
+    presentationActive = false;
+    return;
+  }
+  const script = [
+    'if (-not ("ClassBellNote" -as [type])) {',
+    '  Add-Type -TypeDefinition @"',
+    'using System;',
+    'using System.Runtime.InteropServices;',
+    'public static class ClassBellNote {',
+    '  [DllImport("shell32.dll")] public static extern int SHQueryUserNotificationState(out int pquns);',
+    '}',
+    '"@',
+    '}',
+    '$state = 0',
+    '[void][ClassBellNote]::SHQueryUserNotificationState([ref]$state)',
+    'Write-Output $state'
+  ].join('\n');
+  execFile('powershell.exe', ['-NoProfile', '-Command', script], { windowsHide: true, timeout: 8000 }, (error, stdout) => {
+    if (error || !store || store.getSettings().suppressWhenPresenting !== true) {
+      presentationActive = false;
+      return;
+    }
+    presentationActive = String(stdout || '').trim() === '4';
+  });
 }
 
 function startScheduler() {
@@ -253,6 +307,19 @@ function startScheduler() {
   powerMonitor.on('suspend', () => {
     log.info('System is going to sleep.');
   });
+  powerMonitor.on('lock-screen', () => {
+    sessionLocked = true;
+    if (store && store.getSettings().suppressWhenLocked === true) {
+      log.info('The computer is locked. Scheduled announcements wait until it is unlocked.');
+    }
+  });
+  powerMonitor.on('unlock-screen', () => {
+    sessionLocked = false;
+  });
+  if (!presentationCheckStarted) {
+    presentationCheckStarted = true;
+    setInterval(refreshPresentation, 5000);
+  }
 }
 
 function showWindow() {
@@ -429,6 +496,8 @@ function registerIpc() {
     if (partial && Object.prototype.hasOwnProperty.call(partial, 'launchAtStartup') && partial.launchAtStartup !== before.launchAtStartup) {
       applyLoginSetting(settings.launchAtStartup);
     }
+    if (settings.suppressWhenPresenting !== true) presentationActive = false;
+    else refreshPresentation();
     refreshTray();
     return { ok: true, state: publicState() };
   });
@@ -586,11 +655,26 @@ async function runUiSmoke(win) {
     '  const storedAfter = document.querySelector("#editor-times .stored-time").textContent;',
     '  document.getElementById("editor-add-time").click();',
     '  const timeCount = document.querySelectorAll("#editor-times .time-row").length;',
+    '  const firstButton = document.querySelector("#editor-times .time-row:last-child button").className;',
+    '  const addText = document.querySelector("#editor-times .time-add").textContent;',
+    '  const addColor = getComputedStyle(document.querySelector("#editor-times .time-add")).backgroundColor;',
+    '  const removeColor = getComputedStyle(document.querySelector("#editor-times .time-remove")).color;',
+    '  const repeat = document.querySelector("input[name=recurrence]:checked").value;',
     '  document.querySelector("#editor-times .time-row:last-child button").click();',
     '  const timeCountAfterRemove = document.querySelectorAll("#editor-times .time-row").length;',
     '  document.getElementById("editor-form").requestSubmit();',
     '  await new Promise((resolve) => setTimeout(resolve, 500));',
     '  const afterSave = await window.classbell.getState();',
+    '  document.getElementById("tab-voice").click();',
+    '  const voiceOpen = document.getElementById("view-voice").hidden === false;',
+    '  document.getElementById("tab-clock").click();',
+    '  const clockOpen = document.getElementById("view-clock").hidden === false;',
+    '  const clockOff = document.getElementById("clock-enabled").checked === false;',
+    '  document.getElementById("tab-settings").click();',
+    '  const settingsOpen = document.getElementById("view-settings").hidden === false;',
+    '  const lockOff = document.getElementById("settings-locked").checked === false;',
+    '  const presentOff = document.getElementById("settings-presenting").checked === false;',
+    '  document.getElementById("tab-announcements").click();',
     '  const welcomeTimes = afterSave.announcements.find((item) => item.id === "welcome-to-class").times;',
     '  return {',
     '    ready: document.body.dataset.ready,',
@@ -616,7 +700,23 @@ async function runUiSmoke(win) {
     '    timeCount: timeCount,',
     '    timeCountAfterRemove: timeCountAfterRemove,',
     '    welcomeTimes: welcomeTimes,',
-    '    backToList: document.getElementById("view-list").hidden === false',
+    '    backToList: document.getElementById("view-list").hidden === false,',
+    '    firstButton: firstButton,',
+    '    addText: addText,',
+    '    addColor: addColor,',
+    '    removeColor: removeColor,',
+    '    voiceOpen: voiceOpen,',
+    '    clockOpen: clockOpen,',
+    '    clockOff: clockOff,',
+    '    settingsOpen: settingsOpen,',
+    '    lockOff: lockOff,',
+    '    presentOff: presentOff,',
+    '    scale: window.devicePixelRatio,',
+    '    repeat: repeat,',
+    '    bodyFont: getComputedStyle(document.body).fontSize,',
+    '    headingFont: getComputedStyle(document.querySelector("#view-list h1")).fontSize,',
+    '    voiceTab: document.getElementById("tab-voice").textContent,',
+    '    clockTab: document.getElementById("tab-clock").textContent',
     '  };',
     '})()'
   ].join('\n'));
@@ -643,6 +743,14 @@ async function runUiSmoke(win) {
   if (result.timeCountAfterRemove !== 1) throw new Error('Remove Time did not remove a time.');
   if (!Array.isArray(result.welcomeTimes) || result.welcomeTimes.join(',') !== '08:15') throw new Error('Saved time did not persist.');
   if (result.backToList !== true) throw new Error('Save did not return to announcements.');
+  if (!String(result.firstButton).includes('time-remove')) throw new Error('The time row did not start with remove.');
+  if (result.addText !== '+') throw new Error('The add-time button was missing.');
+  if (result.repeat !== 'daily') throw new Error('A schedule without repeat settings was not daily.');
+  if (result.bodyFont !== '22px' || result.headingFont !== '36px') throw new Error('Text size was outside 22–36.');
+  if (!String(result.voiceTab).includes('Voice') || !String(result.clockTab).includes('Clock')) throw new Error('Voice or Clock tab was missing.');
+  if (result.voiceOpen !== true || result.clockOpen !== true || result.settingsOpen !== true) throw new Error('A settings tab did not open.');
+  if (result.clockOff !== true || result.lockOff !== true || result.presentOff !== true) throw new Error('Optional clock or suppression controls were on by default.');
+  if (result.addColor !== 'rgb(29, 79, 145)' || result.removeColor !== 'rgb(141, 36, 36)') throw new Error('Time add and remove buttons were not blue and red.');
 }
 
 async function speakVoiceFile(voice) {
@@ -723,11 +831,11 @@ async function start() {
 
   queue.setRunner(async (item) => {
     try {
-      if (item.kind === 'schedule' && store.getSettings().paused) {
+      if ((item.kind === 'schedule' || item.kind === 'clock') && store.getSettings().paused) {
         log.info(`Skipped "${item.title}" because announcements are paused.`);
         return;
       }
-      if (item.kind === 'schedule') store.markFired([item.key], new Date());
+      if (item.kind === 'schedule' || item.kind === 'clock') store.markFired([item.key], new Date());
       await speakNow(item);
     } catch (error) {
       log.error(error);

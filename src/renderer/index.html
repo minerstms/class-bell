@@ -27,6 +27,8 @@
 
     <nav id="app-nav" class="tabs" hidden>
       <button id="tab-announcements" class="tab" type="button">Announcements</button>
+      <button id="tab-voice" class="tab" type="button">Voice &amp; Audio</button>
+      <button id="tab-clock" class="tab" type="button">Clock</button>
       <button id="tab-settings" class="tab" type="button">Settings</button>
     </nav>
 
@@ -83,6 +85,30 @@
           <button id="editor-add-time" type="button">Add Time</button>
         </div>
 
+        <h2>Repeat</h2>
+        <p>A schedule with no repeat setting speaks every day.</p>
+        <label class="check" for="recurrence-daily">
+          <input id="recurrence-daily" type="radio" name="recurrence" value="daily">
+          Every day
+        </label>
+        <label class="check" for="recurrence-weekdays">
+          <input id="recurrence-weekdays" type="radio" name="recurrence" value="weekdays">
+          Weekdays
+        </label>
+        <label class="check" for="recurrence-selected">
+          <input id="recurrence-selected" type="radio" name="recurrence" value="selected">
+          Selected days
+        </label>
+        <div id="editor-days" hidden>
+          <label class="check" for="day-sun"><input id="day-sun" type="checkbox" data-day="sun"> Sunday</label>
+          <label class="check" for="day-mon"><input id="day-mon" type="checkbox" data-day="mon"> Monday</label>
+          <label class="check" for="day-tue"><input id="day-tue" type="checkbox" data-day="tue"> Tuesday</label>
+          <label class="check" for="day-wed"><input id="day-wed" type="checkbox" data-day="wed"> Wednesday</label>
+          <label class="check" for="day-thu"><input id="day-thu" type="checkbox" data-day="thu"> Thursday</label>
+          <label class="check" for="day-fri"><input id="day-fri" type="checkbox" data-day="fri"> Friday</label>
+          <label class="check" for="day-sat"><input id="day-sat" type="checkbox" data-day="sat"> Saturday</label>
+        </div>
+
         <label for="editor-voice">Voice</label>
         <select id="editor-voice"></select>
         <p id="editor-voice-help"></p>
@@ -113,9 +139,9 @@
       </form>
     </section>
 
-    <section id="view-settings" hidden>
-      <h1>Settings</h1>
-      <form id="settings-form">
+    <section id="view-voice" hidden>
+      <h1>Voice &amp; Audio</h1>
+      <form id="voice-form">
         <label for="settings-voice">Default voice</label>
         <select id="settings-voice"></select>
         <p id="settings-voice-help"></p>
@@ -128,6 +154,40 @@
         <label for="settings-volume">Default volume <span id="settings-volume-label">100%</span></label>
         <input id="settings-volume" type="range" min="0" max="100" step="5" value="100">
 
+        <div class="stack">
+          <button id="settings-test" type="button">Test Voice</button>
+          <button id="voice-done" class="primary" type="button">Done</button>
+        </div>
+      </form>
+    </section>
+
+    <section id="view-clock" hidden>
+      <h1>Clock</h1>
+      <form id="clock-form">
+        <p>Time announcements stay off until you turn them on. They do not replace class reminders.</p>
+        <label class="check" for="clock-enabled">
+          <input id="clock-enabled" type="checkbox">
+          Announce the time
+        </label>
+        <label for="clock-interval">How often</label>
+        <select id="clock-interval">
+          <option value="5">Every 5 minutes</option>
+          <option value="10">Every 10 minutes</option>
+          <option value="15">Every 15 minutes</option>
+          <option value="20">Every 20 minutes</option>
+          <option value="30">Every 30 minutes</option>
+          <option value="60">Every 60 minutes</option>
+        </select>
+        <p>ClassBell speaks the time on those minutes with the default voice. Pause announcements also pauses the clock.</p>
+        <div class="stack">
+          <button id="clock-done" class="primary" type="button">Done</button>
+        </div>
+      </form>
+    </section>
+
+    <section id="view-settings" hidden>
+      <h1>Settings</h1>
+      <form id="settings-form">
         <label class="check" for="settings-startup">
           <input id="settings-startup" type="checkbox">
           Launch at Windows startup
@@ -145,8 +205,20 @@
           Play a short sound when ClassBell opens
         </label>
 
+        <label class="check" for="settings-locked">
+          <input id="settings-locked" type="checkbox">
+          Pause scheduled announcements while this computer is locked
+        </label>
+        <p>Leave this off if a locked screen should not stop reminders. Test and Play still work.</p>
+
+        <label class="check" for="settings-presenting">
+          <input id="settings-presenting" type="checkbox">
+          Pause scheduled announcements during Windows presentation mode
+        </label>
+        <p>Leave this off unless you want a presentation to hold reminders. Fullscreen video does not pause them.</p>
+
         <div class="stack">
-          <button id="settings-test" type="button">Test Voice</button>
+          <button id="settings-pause" type="button">Pause announcements</button>
           <button id="settings-import" type="button">Import Schedule</button>
           <button id="settings-export" type="button">Export Schedule</button>
           <button id="settings-data" type="button">Open data folder</button>

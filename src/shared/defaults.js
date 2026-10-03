@@ -95,7 +95,11 @@ function createDefaultSettings() {
     launchAtStartup: false,
     minimizeToTray: true,
     playStartupSound: false,
-    paused: false
+    paused: false,
+    clockAnnouncements: false,
+    clockIntervalMinutes: 60,
+    suppressWhenLocked: false,
+    suppressWhenPresenting: false
   };
 }
 

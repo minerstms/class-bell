@@ -1,6 +1,6 @@
 'use strict';
 
-const { dateAt, dateKey, dayCode, parseTime } = require('./time');
+const { allowsDay, dateAt, dateKey, format12, parseTime } = require('./time');
 
 // An announcement is spoken only when ClassBell observes the local clock
 // within GRACE_MS after the scheduled minute. Sleep, hibernation, or a clock
@@ -8,9 +8,7 @@ const { dateAt, dateKey, dayCode, parseTime } = require('./time');
 const GRACE_MS = 30 * 1000;
 
 function announcementAllowsDate(announcement, date) {
-  if (!announcement || !Array.isArray(announcement.days) || announcement.days.length === 0) return true;
-  const allowed = announcement.days.map((day) => String(day).toLowerCase());
-  return allowed.includes(dayCode(date));
+  return allowsDay(announcement, date);
 }
 
 function isDue(now, hhmm, graceMs) {
@@ -45,10 +43,34 @@ function collectDue(announcements, now, firedKeys, options = {}) {
   return due;
 }
 
+const CLOCK_INTERVALS = [5, 10, 15, 20, 30, 60];
+
+function collectClockChime(now, settings, firedKeys, options = {}) {
+  const graceMs = options.graceMs == null ? GRACE_MS : options.graceMs;
+  if (!settings || settings.clockAnnouncements !== true || settings.paused === true) return null;
+  const interval = CLOCK_INTERVALS.includes(Number(settings.clockIntervalMinutes))
+    ? Number(settings.clockIntervalMinutes)
+    : 60;
+  if (now.getMinutes() % interval !== 0) return null;
+  const hhmm = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+  if (!isDue(now, hhmm, graceMs)) return null;
+  const key = `clock|${dateKey(now)}|${hhmm}`;
+  const fired = firedKeys instanceof Set ? firedKeys : new Set(firedKeys || []);
+  if (fired.has(key)) return null;
+  return {
+    hhmm,
+    key,
+    title: 'Time announcement',
+    text: `The time is ${format12(hhmm)}.`
+  };
+}
+
 module.exports = {
   GRACE_MS,
+  CLOCK_INTERVALS,
   announcementAllowsDate,
   isDue,
   occurrenceKey,
-  collectDue
+  collectDue,
+  collectClockChime
 };

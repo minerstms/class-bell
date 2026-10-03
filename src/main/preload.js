@@ -30,6 +30,9 @@ contextBridge.exposeInMainWorld('classbell', {
   nextLabel: (announcement) => time.nextLabel(announcement, new Date()),
   upcomingLabel: (announcements) => time.upcomingLabel(announcements, new Date()),
   earlyTimesMessage: (times) => time.earlyTimesMessage(times),
+  duplicateTimes: (times) => time.duplicateTimes(times),
+  recurrenceMode: (days) => time.recurrenceMode(days),
+  recurrenceLabel: (days) => time.recurrenceLabel(days),
   onStatus: (callback) => {
     const listener = (_event, status) => callback(status);
     ipcRenderer.on('status', listener);

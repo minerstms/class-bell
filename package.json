@@ -1,7 +1,7 @@
 {
   "name": "classbell",
   "productName": "ClassBell",
-  "version": "1.1.0-beta.3",
+  "version": "1.1.0-beta.4",
   "description": "Offline classroom announcement scheduler for Windows",
   "main": "src/main/main.js",
   "private": true,

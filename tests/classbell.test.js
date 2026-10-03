@@ -8,9 +8,9 @@ const test = require('node:test');
 
 const { createDefaultAnnouncements, createDefaultSettings } = require('../src/shared/defaults');
 const { createQueue } = require('../src/shared/queue');
-const { GRACE_MS, collectDue, occurrenceKey } = require('../src/shared/scheduler');
-const { earlyTimesMessage, format12, from12Parts, nextLabel, to12Parts, upcomingLabel } = require('../src/shared/time');
-const { exportScheduleJson, parseScheduleImport } = require('../src/shared/validate');
+const { GRACE_MS, collectDue, collectClockChime, occurrenceKey } = require('../src/shared/scheduler');
+const { duplicateTimes, earlyTimesMessage, format12, from12Parts, nextDate, nextLabel, recurrenceLabel, recurrenceMode, to12Parts, upcomingLabel } = require('../src/shared/time');
+const { exportScheduleJson, normalizeAnnouncement, parseScheduleImport } = require('../src/shared/validate');
 const { applyVolume, peakAmplitude, wavDurationMs } = require('../src/shared/wav');
 const { lengthScaleForRate, piperArguments } = require('../src/main/tts');
 const { createStore } = require('../src/main/store');
@@ -91,6 +91,9 @@ test('defaults are safe and 12-hour labels keep the stored hour', () => {
   assert.equal(settings.launchAtStartup, false);
   assert.equal(settings.minimizeToTray, true);
   assert.equal(settings.paused, false);
+  assert.equal(settings.clockAnnouncements, false);
+  assert.equal(settings.suppressWhenLocked, false);
+  assert.equal(settings.suppressWhenPresenting, false);
   assert.equal(format12('00:05'), '12:05 AM');
   assert.equal(format12('01:15'), '1:15 AM');
   assert.equal(format12('12:00'), '12:00 PM');
@@ -454,4 +457,85 @@ test('Kokoro proof of concept synthesizes a British female voice offline', { tim
   assert.ok(wavDurationMs(bytes) > 500);
   assert.ok(peakAmplitude(bytes) > 200);
   fs.rmSync(outDir, { recursive: true, force: true });
+});
+
+test('daily schedules stay daily and weekdays skip the weekend', () => {
+  const saturday = new Date(2026, 9, 3, 8, 0, 10, 0);
+  assert.equal(saturday.getDay(), 6);
+  const monday = new Date(2026, 9, 5, 8, 0, 10, 0);
+  assert.equal(monday.getDay(), 1);
+  const daily = sample('daily', { times: ['08:00', '08:00', '09:15'] });
+  const saved = normalizeAnnouncement(daily);
+  assert.equal(saved.value.days, undefined);
+  assert.deepEqual(saved.value.times, ['08:00', '09:15']);
+  assert.deepEqual(duplicateTimes(daily.times), ['08:00']);
+  assert.equal(recurrenceMode(undefined), 'daily');
+  assert.equal(recurrenceLabel(undefined), 'Every day');
+  assert.equal(collectDue([sample('daily-once', { times: ['08:00'] })], saturday, new Set()).length, 1);
+  const weekdays = sample('weekdays', { times: ['08:00'], days: ['mon', 'tue', 'wed', 'thu', 'fri'] });
+  assert.equal(recurrenceMode(weekdays.days), 'weekdays');
+  assert.equal(recurrenceLabel(weekdays.days), 'Weekdays');
+  assert.equal(collectDue([weekdays], saturday, new Set()).length, 0);
+  assert.equal(collectDue([weekdays], monday, new Set()).length, 1);
+  const fridayEvening = new Date(2026, 9, 2, 16, 0, 0, 0);
+  const next = nextDate(weekdays, fridayEvening);
+  assert.equal(next.dt.getDay(), 1);
+  assert.equal(next.hhmm, '08:00');
+  const selected = sample('selected', { times: ['08:00'], days: ['wed'] });
+  assert.equal(recurrenceMode(selected.days), 'selected');
+  assert.equal(collectDue([selected], monday, new Set()).length, 0);
+  assert.equal(from12Parts(8, 15, 'AM'), '08:15');
+  assert.equal(from12Parts(8, 15, 'PM'), '20:15');
+  const noon = new Date(2026, 9, 5, 12, 0, 5, 0);
+  assert.equal(collectClockChime(noon, { clockAnnouncements: false, clockIntervalMinutes: 60 }, new Set()), null);
+  const chime = collectClockChime(noon, { clockAnnouncements: true, clockIntervalMinutes: 60, paused: false }, new Set());
+  assert.equal(chime.text, 'The time is 12:00 PM.');
+  assert.equal(collectClockChime(new Date(2026, 9, 5, 12, 5, 0, 0), { clockAnnouncements: true, clockIntervalMinutes: 60 }, new Set()), null);
+  assert.equal(collectClockChime(new Date(2026, 9, 5, 12, 10, 0, 0), { clockAnnouncements: true, clockIntervalMinutes: 10 }, new Set()).hhmm, '12:10');
+});
+
+test('existing settings stay in place when clock options are added', () => {
+  const dir = tempDir();
+  fs.writeFileSync(path.join(dir, 'settings.json'), JSON.stringify({
+    version: 1,
+    firstRunComplete: true,
+    defaultVoiceId: 'cori',
+    defaultRate: 1.1,
+    defaultVolume: 80,
+    launchAtStartup: true,
+    minimizeToTray: false,
+    playStartupSound: true,
+    paused: true
+  }));
+  fs.writeFileSync(path.join(dir, 'announcements.json'), JSON.stringify({
+    version: 1,
+    announcements: [sample('kept', { title: 'Kept reminder', times: ['07:40'], createdAt: '2026-10-01T00:00:00.000Z', updatedAt: '2026-10-01T00:00:00.000Z' })]
+  }));
+  const store = createStore(dir, { clock: () => new Date(2026, 9, 2, 12, 0, 0) });
+  const settings = store.getSettings();
+  assert.equal(settings.defaultVoiceId, 'cori');
+  assert.equal(settings.defaultRate, 1.1);
+  assert.equal(settings.defaultVolume, 80);
+  assert.equal(settings.launchAtStartup, true);
+  assert.equal(settings.minimizeToTray, false);
+  assert.equal(settings.playStartupSound, true);
+  assert.equal(settings.paused, true);
+  assert.equal(settings.firstRunComplete, true);
+  assert.equal(settings.clockAnnouncements, false);
+  assert.equal(settings.clockIntervalMinutes, 60);
+  assert.equal(settings.suppressWhenLocked, false);
+  assert.equal(settings.suppressWhenPresenting, false);
+  const kept = store.getAnnouncements()[0];
+  assert.equal(kept.title, 'Kept reminder');
+  assert.deepEqual(kept.times, ['07:40']);
+  assert.equal(kept.days, undefined);
+  const imported = parseScheduleImport({
+    format: 'classbell-schedule',
+    announcements: [sample('imported', { title: 'Imported', times: ['10:00'] })]
+  });
+  assert.equal(imported.ok, true);
+  assert.equal(imported.announcements[0].days, undefined);
+  store.mergeAnnouncements(imported.announcements);
+  assert.equal(store.getAnnouncements().find((item) => item.id === 'kept').title, 'Kept reminder');
+  assert.equal(store.getAnnouncements().find((item) => item.id === 'imported').days, undefined);
 });

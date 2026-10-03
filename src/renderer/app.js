@@ -4,7 +4,7 @@ let state = null;
 let editor = null;
 let bannerTimer = null;
 
-const views = ['welcome', 'list', 'editor', 'settings'];
+const views = ['welcome', 'list', 'editor', 'voice', 'clock', 'settings'];
 
 function $(id) {
   return document.getElementById(id);
@@ -17,8 +17,12 @@ function showView(name) {
   nav.hidden = name === 'welcome';
   const onAnnouncements = name === 'list' || name === 'editor';
   $('tab-announcements').classList.toggle('on', onAnnouncements);
+  $('tab-voice').classList.toggle('on', name === 'voice');
+  $('tab-clock').classList.toggle('on', name === 'clock');
   $('tab-settings').classList.toggle('on', name === 'settings');
   $('tab-announcements').setAttribute('aria-current', onAnnouncements ? 'page' : 'false');
+  $('tab-voice').setAttribute('aria-current', name === 'voice' ? 'page' : 'false');
+  $('tab-clock').setAttribute('aria-current', name === 'clock' ? 'page' : 'false');
   $('tab-settings').setAttribute('aria-current', name === 'settings' ? 'page' : 'false');
   window.scrollTo(0, 0);
 }
@@ -122,6 +126,8 @@ function renderChrome() {
   const paused = state.settings.paused === true;
   $('pause-button').textContent = paused ? 'Resume announcements' : 'Pause announcements';
   $('pause-button').classList.toggle('on', !paused);
+  $('settings-pause').textContent = paused ? 'Resume announcements' : 'Pause announcements';
+  $('settings-pause').classList.toggle('on', !paused);
   const enabledCount = state.announcements.filter((item) => item.enabled).length;
   $('list-count').textContent = `${enabledCount} on · ${state.announcements.length} saved`;
   $('scheduler-label').textContent = paused ? 'Announcements paused' : 'Scheduler running';
@@ -191,6 +197,10 @@ function renderCards() {
       card.append(notes);
     }
 
+    const repeat = document.createElement('p');
+    repeat.textContent = window.classbell.recurrenceLabel(announcement.days);
+    card.append(repeat);
+
     const times = document.createElement('div');
     times.className = 'chip-list';
     if (!announcement.times.length) {
@@ -258,10 +268,12 @@ function timeSelect(part, values, selected, index) {
 function renderTimes() {
   const wrap = $('editor-times');
   wrap.replaceChildren();
+  const duplicates = new Set(window.classbell.duplicateTimes(editor.times));
   editor.times.forEach((hhmm, index) => {
     const parts = window.classbell.to12Parts(hhmm);
     const row = document.createElement('div');
     row.className = 'time-row';
+    if (duplicates.has(hhmm)) row.classList.add('duplicate');
     const hour = timeSelect('hour', [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], parts.hour, index);
     const minutes = [];
     for (let minute = 0; minute < 60; minute += 1) minutes.push(String(minute).padStart(2, '0'));
@@ -274,6 +286,10 @@ function renderTimes() {
       if (next) editor.times[index] = next;
       stored.textContent = `Stored ${editor.times[index]}`;
       updateEditorWarning();
+      const duplicates = new Set(window.classbell.duplicateTimes(editor.times));
+      wrap.querySelectorAll('.time-row').forEach((item, rowIndex) => {
+        item.classList.toggle('duplicate', duplicates.has(editor.times[rowIndex]));
+      });
     };
     hour.select.addEventListener('change', commit);
     minute.select.addEventListener('change', commit);
@@ -281,22 +297,60 @@ function renderTimes() {
     stored.textContent = `Stored ${hhmm}`;
     const remove = document.createElement('button');
     remove.type = 'button';
-    remove.textContent = 'Remove Time';
+    remove.className = 'time-remove';
+    remove.textContent = '−';
+    remove.setAttribute('aria-label', 'Remove this time');
     remove.addEventListener('click', () => {
       editor.times.splice(index, 1);
       renderTimes();
       updateEditorWarning();
     });
-    row.append(hour.label, hour.select, minute.label, minute.select, suffix.label, suffix.select, stored, remove);
+    const add = document.createElement('button');
+    add.type = 'button';
+    add.className = 'time-add';
+    add.textContent = '+';
+    add.setAttribute('aria-label', 'Add a time below this one');
+    add.addEventListener('click', () => {
+      editor.times.splice(index + 1, 0, nextFreeTime(editor.times));
+      renderTimes();
+      updateEditorWarning();
+    });
+    row.append(hour.label, hour.select, minute.label, minute.select, suffix.label, suffix.select, stored, remove, add);
     wrap.append(row);
   });
 }
 
 function updateEditorWarning() {
-  const message = window.classbell.earlyTimesMessage(editor.times);
+  const parts = [];
+  const early = window.classbell.earlyTimesMessage(editor.times);
+  if (early) parts.push(early);
+  const duplicates = [...new Set(window.classbell.duplicateTimes(editor.times))];
+  if (duplicates.length) {
+    const labels = duplicates.map((hhmm) => `${window.classbell.format12(hhmm)} (${hhmm})`);
+    parts.push(`Duplicate time: ${labels.join(', ')}. ClassBell keeps one copy of each time.`);
+  }
   const warning = $('editor-warning');
-  warning.textContent = message;
-  warning.hidden = !message;
+  warning.textContent = parts.join(' ');
+  warning.hidden = !parts.length;
+}
+
+function syncDayChoices(days) {
+  const selected = new Set(Array.isArray(days) ? days : []);
+  for (const input of document.querySelectorAll('#editor-days input')) {
+    input.checked = selected.has(input.dataset.day);
+  }
+}
+
+function showRecurrenceDays() {
+  $('editor-days').hidden = !$('recurrence-selected').checked;
+}
+
+function recurrenceDays() {
+  const selected = document.querySelector('input[name="recurrence"]:checked');
+  const mode = selected ? selected.value : 'daily';
+  if (mode === 'daily') return null;
+  if (mode === 'weekdays') return ['mon', 'tue', 'wed', 'thu', 'fri'];
+  return [...document.querySelectorAll('#editor-days input:checked')].map((input) => input.dataset.day);
 }
 
 function nextFreeTime(times) {
@@ -328,21 +382,38 @@ function openEditor(announcement, heading) {
   $('editor-ready-wrap').hidden = !placeholder;
   $('editor-ready').checked = false;
   $('editor-enabled').disabled = placeholder;
+  const mode = window.classbell.recurrenceMode(announcement.days);
+  $(`recurrence-${mode}`).checked = true;
+  syncDayChoices(announcement.days);
+  showRecurrenceDays();
   renderTimes();
   updateEditorWarning();
   showView('editor');
 }
 
-function openSettings() {
+function openVoice() {
   fillVoices($('settings-voice'), state.settings.defaultVoiceId);
   $('settings-voice-help').textContent = voiceHelp($('settings-voice').value);
   $('settings-rate').value = String(state.settings.defaultRate);
   $('settings-volume').value = String(state.settings.defaultVolume);
   $('settings-rate-label').textContent = `${Number(state.settings.defaultRate).toFixed(2)}×`;
   $('settings-volume-label').textContent = `${state.settings.defaultVolume}%`;
+  showView('voice');
+}
+
+function openClock() {
+  $('clock-enabled').checked = state.settings.clockAnnouncements === true;
+  $('clock-interval').value = String(state.settings.clockIntervalMinutes || 60);
+  $('clock-interval').disabled = state.settings.clockAnnouncements !== true;
+  showView('clock');
+}
+
+function openSettings() {
   $('settings-startup').checked = state.settings.launchAtStartup === true;
   $('settings-tray').checked = state.settings.minimizeToTray !== false;
   $('settings-startup-sound').checked = state.settings.playStartupSound === true;
+  $('settings-locked').checked = state.settings.suppressWhenLocked === true;
+  $('settings-presenting').checked = state.settings.suppressWhenPresenting === true;
   $('settings-paths').textContent = `Data: ${state.paths.data}\nLogs: ${state.paths.logs}`;
   $('settings-paths').style.whiteSpace = 'pre-wrap';
   $('settings-version').textContent = `ClassBell ${state.version}`;
@@ -490,6 +561,14 @@ function bind() {
     renderCards();
     renderChrome();
   });
+  $('tab-voice').addEventListener('click', () => {
+    editor = null;
+    openVoice();
+  });
+  $('tab-clock').addEventListener('click', () => {
+    editor = null;
+    openClock();
+  });
   $('tab-settings').addEventListener('click', () => {
     editor = null;
     openSettings();
@@ -558,6 +637,9 @@ function bind() {
       ]);
     }
   });
+  for (const input of document.querySelectorAll('input[name="recurrence"]')) {
+    input.addEventListener('change', showRecurrenceDays);
+  }
   $('editor-add-time').addEventListener('click', () => {
     editor.times.push(nextFreeTime(editor.times));
     renderTimes();
@@ -613,6 +695,11 @@ function bind() {
       showBanner('Write a message before this announcement can speak.');
       return;
     }
+    const days = recurrenceDays();
+    if ($('recurrence-selected').checked && (!days || !days.length)) {
+      showBanner('Choose at least one day, or switch this announcement to every day.');
+      return;
+    }
     const payload = {
       id: editor.original.id,
       title: $('editor-title').value,
@@ -626,7 +713,7 @@ function bind() {
       notes: $('editor-notes').value,
       createdAt: editor.original.createdAt
     };
-    if (editor.original.days) payload.days = editor.original.days;
+    if (days && days.length) payload.days = days;
     const result = applyResult(await window.classbell.saveAnnouncement(payload));
     if (result && result.ok) {
       editor = null;
@@ -651,6 +738,34 @@ function bind() {
   $('settings-startup').addEventListener('change', () => saveSettings({ launchAtStartup: $('settings-startup').checked }));
   $('settings-tray').addEventListener('change', () => saveSettings({ minimizeToTray: $('settings-tray').checked }));
   $('settings-startup-sound').addEventListener('change', () => saveSettings({ playStartupSound: $('settings-startup-sound').checked }));
+  $('settings-locked').addEventListener('change', () => saveSettings({ suppressWhenLocked: $('settings-locked').checked }));
+  $('settings-presenting').addEventListener('change', () => saveSettings({ suppressWhenPresenting: $('settings-presenting').checked }));
+  $('settings-pause').addEventListener('click', async () => {
+    const result = applyResult(await window.classbell.setPaused(!state.settings.paused));
+    if (result && result.state) renderChrome();
+  });
+  $('clock-enabled').addEventListener('change', () => {
+    $('clock-interval').disabled = !$('clock-enabled').checked;
+    saveSettings({
+      clockAnnouncements: $('clock-enabled').checked,
+      clockIntervalMinutes: Number($('clock-interval').value)
+    });
+  });
+  $('clock-interval').addEventListener('change', () => {
+    saveSettings({ clockIntervalMinutes: Number($('clock-interval').value) });
+  });
+  $('voice-done').addEventListener('click', () => {
+    showView('list');
+    renderCards();
+    renderChrome();
+  });
+  $('clock-done').addEventListener('click', () => {
+    showView('list');
+    renderCards();
+    renderChrome();
+  });
+  $('voice-form').addEventListener('submit', (event) => event.preventDefault());
+  $('clock-form').addEventListener('submit', (event) => event.preventDefault());
   $('settings-test').addEventListener('click', async () => {
     applyResult(await window.classbell.speak({
       title: 'Test',
@@ -676,7 +791,7 @@ function bind() {
       closeModal();
       return;
     }
-    if (document.body.dataset.view === 'editor' || document.body.dataset.view === 'settings') {
+    if (document.body.dataset.view === 'editor' || document.body.dataset.view === 'voice' || document.body.dataset.view === 'clock' || document.body.dataset.view === 'settings') {
       showView('list');
       renderCards();
       renderChrome();

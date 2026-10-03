@@ -238,6 +238,30 @@ input[type="range"] { width: 100%; height: 36px; }
 .time-row input,
 .time-row select { width: 100%; }
 
+.time-row.duplicate {
+  background: var(--amber-bg);
+  border-radius: 12px;
+  padding: 8px;
+}
+
+button.time-add {
+  background: #1d4f91;
+  border-color: #1d4f91;
+  color: white;
+  font-size: 28px;
+  font-weight: 700;
+  text-align: center;
+}
+
+button.time-remove {
+  background: #f8e8e8;
+  border-color: var(--bad);
+  color: var(--bad);
+  font-size: 28px;
+  font-weight: 700;
+  text-align: center;
+}
+
 .tabs {
   display: flex;
   flex-direction: column;

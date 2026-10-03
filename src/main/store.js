@@ -4,6 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const { createDefaultAnnouncements, createDefaultSettings, DEFAULT_VOICE_ID } = require('../shared/defaults');
 const { dateKey, clampRate, clampVolume } = require('../shared/time');
+const CLOCK_INTERVALS = [5, 10, 15, 20, 30, 60];
 const { normalizeAnnouncement } = require('../shared/validate');
 
 function createStore(dir, options = {}) {
@@ -75,16 +76,9 @@ function createStore(dir, options = {}) {
     writeJson(settingsPath, settings);
   }
 
-  function loadSettings() {
-    const defaults = createDefaultSettings();
-    const result = readJson(settingsPath);
-    if (result.missing || result.corrupt || !result.value || typeof result.value !== 'object') {
-      settings = defaults;
-      writeSettings();
-      return;
-    }
-    const raw = result.value;
-    settings = {
+  function normalizeSettings(raw, defaults) {
+    const interval = Number(raw.clockIntervalMinutes);
+    return {
       version: 1,
       firstRunComplete: raw.firstRunComplete === true,
       defaultVoiceId: typeof raw.defaultVoiceId === 'string' && raw.defaultVoiceId.trim() ? raw.defaultVoiceId.trim() : defaults.defaultVoiceId,
@@ -93,8 +87,23 @@ function createStore(dir, options = {}) {
       launchAtStartup: raw.launchAtStartup === true,
       minimizeToTray: raw.minimizeToTray !== false,
       playStartupSound: raw.playStartupSound === true,
-      paused: raw.paused === true
+      paused: raw.paused === true,
+      clockAnnouncements: raw.clockAnnouncements === true,
+      clockIntervalMinutes: CLOCK_INTERVALS.includes(interval) ? interval : defaults.clockIntervalMinutes,
+      suppressWhenLocked: raw.suppressWhenLocked === true,
+      suppressWhenPresenting: raw.suppressWhenPresenting === true
     };
+  }
+
+  function loadSettings() {
+    const defaults = createDefaultSettings();
+    const result = readJson(settingsPath);
+    if (result.missing || result.corrupt || !result.value || typeof result.value !== 'object') {
+      settings = defaults;
+      writeSettings();
+      return;
+    }
+    settings = normalizeSettings(result.value, defaults);
     writeSettings();
   }
 
@@ -229,18 +238,8 @@ function createStore(dir, options = {}) {
   }
 
   function updateSettings(partial) {
-    const next = { ...settings, ...partial };
-    settings = {
-      version: 1,
-      firstRunComplete: next.firstRunComplete === true,
-      defaultVoiceId: typeof next.defaultVoiceId === 'string' && next.defaultVoiceId.trim() ? next.defaultVoiceId.trim() : settings.defaultVoiceId,
-      defaultRate: clampRate(next.defaultRate, settings.defaultRate),
-      defaultVolume: clampVolume(next.defaultVolume, settings.defaultVolume),
-      launchAtStartup: next.launchAtStartup === true,
-      minimizeToTray: next.minimizeToTray !== false,
-      playStartupSound: next.playStartupSound === true,
-      paused: next.paused === true
-    };
+    const defaults = createDefaultSettings();
+    settings = normalizeSettings({ ...settings, ...partial }, defaults);
     writeSettings();
     return getSettings();
   }

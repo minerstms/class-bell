@@ -2,6 +2,16 @@
 
 const TIME_RE = /^([01]\d|2[0-3]):([0-5]\d)$/;
 const DAY_CODES = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+const WEEKDAYS = ['mon', 'tue', 'wed', 'thu', 'fri'];
+const DAY_CHOICES = [
+  { id: 'sun', label: 'Sunday' },
+  { id: 'mon', label: 'Monday' },
+  { id: 'tue', label: 'Tuesday' },
+  { id: 'wed', label: 'Wednesday' },
+  { id: 'thu', label: 'Thursday' },
+  { id: 'fri', label: 'Friday' },
+  { id: 'sat', label: 'Saturday' }
+];
 
 function parseTime(hhmm) {
   if (typeof hhmm !== 'string') return null;
@@ -53,13 +63,20 @@ function dayCode(date) {
   return DAY_CODES[date.getDay()];
 }
 
+function allowsDay(announcement, date) {
+  const days = normalizeDays(announcement && announcement.days);
+  if (!days) return true;
+  return days.includes(dayCode(date));
+}
+
 function nextDate(announcement, now) {
   const times = (announcement.times || []).filter(parseTime);
+  const horizon = normalizeDays(announcement && announcement.days) ? 8 : 2;
   let best = null;
-  for (const dayOffset of [0, 1]) {
+  for (let dayOffset = 0; dayOffset < horizon; dayOffset += 1) {
     for (const hhmm of times) {
       const when = dateAt(now, hhmm, dayOffset);
-      if (!when) continue;
+      if (!when || !allowsDay(announcement, when)) continue;
       if (when.getTime() + 60000 <= now.getTime()) continue;
       if (!best || when < best.dt) best = { dt: when, hhmm };
     }
@@ -138,13 +155,42 @@ function clampVolume(value, fallback) {
 
 function normalizeDays(days) {
   if (!Array.isArray(days) || days.length === 0) return null;
-  const cleaned = [...new Set(days.map((day) => String(day).trim().toLowerCase()).filter((day) => DAY_CODES.includes(day)))];
-  return cleaned.length ? cleaned : null;
+  const cleaned = new Set(days.map((day) => String(day).trim().toLowerCase()).filter((day) => DAY_CODES.includes(day)));
+  const ordered = DAY_CODES.filter((day) => cleaned.has(day));
+  return ordered.length ? ordered : null;
+}
+
+function duplicateTimes(times) {
+  const seen = new Set();
+  const duplicates = [];
+  for (const hhmm of Array.isArray(times) ? times : []) {
+    if (!parseTime(hhmm)) continue;
+    if (seen.has(hhmm)) duplicates.push(hhmm);
+    else seen.add(hhmm);
+  }
+  return duplicates;
+}
+
+function recurrenceMode(days) {
+  const cleaned = normalizeDays(days);
+  if (!cleaned) return 'daily';
+  if (cleaned.length === WEEKDAYS.length && WEEKDAYS.every((day) => cleaned.includes(day))) return 'weekdays';
+  return 'selected';
+}
+
+function recurrenceLabel(days) {
+  const mode = recurrenceMode(days);
+  if (mode === 'daily') return 'Every day';
+  if (mode === 'weekdays') return 'Weekdays';
+  const cleaned = normalizeDays(days) || [];
+  return cleaned.map((day) => DAY_CHOICES.find((choice) => choice.id === day).label).join(', ');
 }
 
 module.exports = {
   TIME_RE,
   DAY_CODES,
+  WEEKDAYS,
+  DAY_CHOICES,
   parseTime,
   format12,
   isEarlyHour,
@@ -160,5 +206,9 @@ module.exports = {
   upcomingLabel,
   clampRate,
   clampVolume,
-  normalizeDays
+  normalizeDays,
+  allowsDay,
+  duplicateTimes,
+  recurrenceMode,
+  recurrenceLabel
 };
